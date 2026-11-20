@@ -2,7 +2,7 @@ const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./lib.esm-CaOQ8GKa.js"
 import { requestLanguages, translationLanguage } from "./request-languages.js";
 import { matchStorageRequest } from "./request-storage.js";
 import { createBuildTiming, formatBuildTime, modelSources, untilBuildAbort } from "./build-timing.js";
-import { prepareAssistantCompiler } from "./Deploy-CSRagFYr.js";
+import * as deploymentTools from "./Deploy-CSRagFYr.js";
 import{ah as Oa,ai as V,aj as y,ak as e,al as ua,am as K,an as Ca,ao as ii,ap as ni,aq as sa,e as ha,ar as ei,as as oi}from"./index-BOd0iaB5.js";import{C as ti,p as ui,b as si}from"./Deploy-CSRagFYr.js";/**
  * @license lucide-react v0.548.0 - ISC
  *
@@ -218,13 +218,15 @@ function Ja(event){
         engine=await untilBuildAbort(signal,startModel());
         showModel=false;
         signal.throwIfAborted();
-        compilerTask=timing.measure("compilerPrep",()=>prepareAssistantCompiler(signal)).catch(()=>null);
+        if(deploymentTools.prepareAssistantCompiler){
+          compilerTask=timing.measure("compilerPrep",()=>deploymentTools.prepareAssistantCompiler(signal)).catch(()=>null);
+        }
         w("Writing Solidity on your device…");
         const source=await timing.measure("draft",()=>untilBuildAbort(signal,engine.generate(draft)));
         const generated={...skeleton,source};
         b(generated);
         if(D.current)D.current.open=true;
-        prepared=await untilBuildAbort(signal,compilerTask);
+        if(compilerTask)prepared=await untilBuildAbort(signal,compilerTask);
         try{await timing.measure("compile",()=>G(generated,build,prepared))}catch(error){
           signal.throwIfAborted();
           w("Repairing the draft on your device…");
