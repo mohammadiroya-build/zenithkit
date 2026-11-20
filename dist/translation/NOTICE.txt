@@ -1,0 +1,11 @@
+The bundled Bergamot translation worker and WebAssembly runtime are from
+@mkljczk/bergamot-translator 0.4.16, distributed under MPL 2.0.
+
+Package and source:
+https://www.npmjs.com/package/@mkljczk/bergamot-translator/v/0.4.16
+https://codeberg.org/mkljczk/bergamot-translator
+
+License: https://www.mozilla.org/MPL/2.0/
+Mozilla translation models: https://github.com/mozilla/translations
+Pinned browser model mirror:
+https://huggingface.co/midudev/firefox-translations/tree/6f6acd72c26975a06a8e61b72d1fbacbd184c23f
