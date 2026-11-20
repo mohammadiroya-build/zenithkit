@@ -1,7 +1,9 @@
 {
   "name": "zenithkit",
   "compatibility_date": "2026-11-20",
+  "main": "./workers/model-downloads.mjs",
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "run_worker_first": ["/_models/*"]
   }
 }
