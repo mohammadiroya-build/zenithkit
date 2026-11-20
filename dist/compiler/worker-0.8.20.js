@@ -5,6 +5,10 @@ const version = Module.cwrap('solidity_version', 'string', [])
 const reset = Module.cwrap('solidity_reset', null, [])
 
 self.onmessage = ({ data }) => {
+  if (data?.prepare === true) {
+    self.postMessage({ prepared: true })
+    return
+  }
   try {
     const compilerVersion = version().split('.Emscripten')[0]
     const output = JSON.parse(compile(JSON.stringify(data), 0, 0))
