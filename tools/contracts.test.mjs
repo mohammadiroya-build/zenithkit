@@ -26,6 +26,7 @@ test("worker forwards the unchanged original request in one model call", async (
   const res = await worker.fetch(post({ prompt: original, language: "es" }), env(async (model, input) => {
     calls++;
     assert.equal(model, "@cf/google/gemma-4-26b-a4b-it");
+    assert.deepEqual(input.chat_template_kwargs, { enable_thinking: false });
     assert.deepEqual(JSON.parse(input.messages[1].content), { request: original, language_hint: "es" });
     return { choices: [{ message: { content: `\`\`\`solidity\n${validSource}\`\`\`` }, finish_reason: "stop" }] };
   }));
@@ -44,6 +45,7 @@ for (const compilerVersion of ["0.8.20", "0.8.24"]) {
       const body = { prompt, compilerVersion, ...(repair ? { source, diagnostic } : {}) };
       const response = await worker.fetch(post(body), env(async (_, input) => {
         assert.ok(input.messages[0].content.includes(`pragma solidity ${compilerVersion};`));
+        assert.deepEqual(input.chat_template_kwargs, repair ? undefined : { enable_thinking: false });
         assert.deepEqual(JSON.parse(input.messages[1].content), {
           request: prompt,
           ...(repair ? { previous_source: source, compiler_error: diagnostic } : {}),

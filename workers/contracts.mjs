@@ -116,6 +116,7 @@ export default {
             { role: "system", content: `${SYSTEM} Use this exact pragma: pragma solidity ${compilerVersion};` },
             { role: "user", content: JSON.stringify(draftRequest) },
           ],
+          ...(!body.source && { chat_template_kwargs: { enable_thinking: false } }),
           max_completion_tokens: 2200,
           temperature: 0.1,
         }),
