@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { compareRuntimeBytecode } from "../dist/assets/contract-bytecode.js";
 import { deploymentFees, feePaid, formatZthFee } from "../dist/assets/contract-fees.js";
 import { matchStorageRequest } from "../dist/assets/request-storage.js";
+import { deploymentValue, initializerFor, readAssistantDeployment } from "../dist/assets/assistant-deployment-plan.js";
 import worker from "../workers/contracts.mjs";
 
 const validSource = "// SPDX-License-Identifier: MIT\npragma solidity 0.8.20;\ncontract Demo {}\n";
@@ -87,4 +88,32 @@ test("runtime comparison distinguishes on-chain match and mismatches", () => {
   assert.equal(matched.state, "Bytecode matched");
   assert.match(matched.message, /immutable values were not checked/);
   assert.equal(compareRuntimeBytecode("0x60005c4400", contract).state, "Not matched");
+});
+
+test("assistant requires a unique state-changing initializer and validates payable amounts", () => {
+  const initialize = { name: "initialize", type: "function", stateMutability: "payable" };
+  assert.equal(initializerFor({ abi: [initialize] }, " initialize "), initialize);
+  assert.equal(initializerFor({ abi: [] }, "initialize"), null);
+  assert.equal(initializerFor({ abi: [initialize, initialize] }, "initialize"), null);
+  assert.equal(initializerFor({ abi: [{ ...initialize, stateMutability: "view" }] }, "initialize"), null);
+  const parse = value => BigInt(value === "0.25" ? 25 : value);
+  assert.equal(deploymentValue(" ", false, "initializer", parse), 0n);
+  assert.equal(deploymentValue("0.25", true, "initializer", parse), 25n);
+  assert.throws(() => deploymentValue("0.25", false, "initializer", parse), /does not accept ZTH/);
+  assert.throws(() => deploymentValue("0.1234567890123456789", true, "initializer", parse), /up to 18 decimals/);
+});
+
+test("assistant retains legacy transactions and resumes a confirmed implementation without a transaction", () => {
+  const hash = "0x" + "ab".repeat(32);
+  const account = "0x" + "ab".repeat(20);
+  const address = "0x" + "cd".repeat(20);
+  const contract = { abi: [] };
+  const transaction = { hash, account, contract, encoded: "0x" };
+  const proxy = { data: "0x12345678", value: "0" };
+  const implementation = { address, owner: account, parts: [{ hash, address, contract }] };
+  assert.deepEqual(readAssistantDeployment(transaction), { transaction, verify: false, proxy: null });
+  const pending = { transaction: null, proxy, implementation, verify: true };
+  assert.deepEqual(readAssistantDeployment({ version: 2, ...pending }), pending);
+  assert.equal(readAssistantDeployment({ version: 2, ...pending, proxy: null }), null);
+  assert.equal(readAssistantDeployment({ version: 2, ...pending, transaction: { ...transaction, account: address } }), null);
 });

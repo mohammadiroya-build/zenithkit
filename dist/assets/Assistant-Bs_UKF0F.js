@@ -1,23 +1,11 @@
-const __vite__mapDeps = (
-  i,
-  m = __vite__mapDeps,
-  d = m.f ||
-    (m.f = [
-      "./lib.esm-CaOQ8GKa.js",
-      "./provider-browser-LBmMibJ8.js",
-      "./index-BOd0iaB5.js",
-      "./index-CERNRboz.css",
-      "./deployment-DiAeDUBl.js",
-    ]),
-) => i.map((i) => d[i]);
 import { requestLanguages } from "./request-languages.js";
 import { matchStorageRequest } from "./request-storage.js";
 import { createBuildTiming, formatBuildTime } from "./build-timing.js";
 import { formatZthFee } from "./contract-fees.js";
+import { deploymentValue, initializerFor, readAssistantDeployment } from "./assistant-deployment-plan.js";
 import * as deploymentTools from "./Deploy-CSRagFYr.js";
 import {
   ah as Oa,
-  ai as V,
   aj as y,
   ak as e,
   al as ua,
@@ -605,6 +593,44 @@ async function hostedDraft(prompt, language, signal, repair) {
 function shouldRepair(error) {
   return /\b(?:ParserError|TypeError|DeclarationError|SyntaxError|CompilerError|DocstringParsingError):|No deployable contract|Multiple deployable contracts|Link external libraries/i.test(error?.message ?? "");
 }
+const proxyExampleRequest = "Create a proxy-ready contract that stores a number";
+function proxyExample(request) {
+  if (request.toLowerCase().replace(/[.!]$/, "") !== proxyExampleRequest.toLowerCase()) return null;
+  return {
+    title: "Number storage · Proxy-ready template",
+    name: "ProxyNumberStore",
+    details: [
+      ["Initializer", "initialize(uint256 initialValue)"],
+      ["Write access", "Any account can update the value"],
+    ],
+    editable: true,
+    source: `// SPDX-License-Identifier: MIT
+pragma solidity 0.8.20;
+
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+
+contract ProxyNumberStore is Initializable {
+    uint256 private storedValue;
+
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(uint256 initialValue) external initializer {
+        storedValue = initialValue;
+    }
+
+    function setValue(uint256 newValue) external {
+        storedValue = newValue;
+    }
+
+    function getValue() external view returns (uint256) {
+        return storedValue;
+    }
+}
+`,
+  };
+}
 const X = "zenith-kit-assistant-pending",
   ln = Pa[0][1],
   Ia = (a = "") => ({
@@ -615,18 +641,8 @@ const X = "zenith-kit-assistant-pending",
     generated: !1,
     editable: !0,
   }),
-  rn = () => {
-    var i;
-    const a = ei(X, null);
-    return /^0x[\da-f]{64}$/i.test((a == null ? void 0 : a.hash) ?? "") &&
-      /^0x[\da-f]{40}$/i.test(a.account) &&
-      Array.isArray((i = a.contract) == null ? void 0 : i.abi) &&
-      typeof a.encoded == "string"
-      ? a
-      : null;
-  };
+  rn = () => readAssistantDeployment(ei(X, null));
 function hn({ wallet: a, record: i, save: n }) {
-  var Da;
   const [o, t] = y.useState(""),
     [requestLanguage, setRequestLanguage] = y.useState(""),
     [buildTimings, setBuildTimings] = y.useState(null),
@@ -639,20 +655,33 @@ function hn({ wallet: a, record: i, save: n }) {
     [pa, ca] = y.useState("[]"),
     [wa, ja] = y.useState(""),
     [ia, L] = y.useState(!1),
+    [deploy, setDeploy] = y.useState(true),
+    [verify, setVerify] = y.useState(false),
+    [target, setTarget] = y.useState(""),
+    [proxy, setProxy] = y.useState(false),
+    [initName, setInitName] = y.useState("initialize"),
+    [initArgs, setInitArgs] = y.useState("[]"),
+    [initValue, setInitValue] = y.useState(""),
     [f, na] = y.useState(rn),
     [z, ea] = y.useState(null),
-    [M, va] = y.useState(!1),
     N = y.useRef(null),
     C = y.useRef(!1),
     fa = y.useRef(null),
     D = y.useRef(null),
-    F = s == null ? void 0 : s.abi.find((l) => l.type === "constructor");
+    F = s?.abi.find((l) => l.type === "constructor"),
+    initializer = initializerFor(s, initName),
+    useProxy = deploy && proxy,
+    deployed = z?.parts.some(part => part.hash);
   function Ya(l) {
     var h;
     (setRequestLanguage(""), t(l), (h = fa.current) == null || h.focus());
   }
   function za(l) {
     (b(l), c(null), L(!1), ca("[]"), ja(""), ea(null));
+    setProxy(false);
+    setInitName("initialize");
+    setInitArgs("[]");
+    setInitValue("");
   }
   y.useEffect(() => () => N.current?.abort(), []);
   function oa(l) {
@@ -694,7 +723,7 @@ function hn({ wallet: a, record: i, save: n }) {
       w("Reading your request…");
       try {
         const quick = await timing.measure("request", () => {
-          const storage = matchStorageRequest(request);
+          const storage = matchStorageRequest(request) || proxyExample(request);
           if (storage) return storage;
           if (requestLanguage && requestLanguage !== "en") return null;
           try {
@@ -773,92 +802,174 @@ function hn({ wallet: a, record: i, save: n }) {
           (l = D.current.querySelector("textarea")) == null || l.focus());
       }));
   }
-  async function xa(l, h) {
-    w("Waiting for Zenith finality…");
+  function savePending(next) {
+    sa(X, next ? { ...next, version: 2 } : {});
+    na(next);
+  }
+  function saveResult(result) {
+    n(result);
+    ea(result);
+  }
+  async function checkResult(result) {
+    const parts = await Promise.all(result.parts.map(async part => ({
+      ...part,
+      verification: await deploymentTools.checkDeploymentBytecode(part),
+    })));
+    saveResult({ ...result, parts });
+  }
+  async function runDeployment(message, action, changesPending = false) {
+    if (C.current || N.current) return;
+    C.current = true;
+    A("");
+    w(message);
     try {
-      const p = await h(l);
-      (ea(p),
-        na(null),
-        sa(X, {}),
-        i(p.name, p.parts[0].hash, "Finalized"),
-        n(p));
-    } catch (p) {
-      const g = da(p),
-        q = /transaction reverted on zenith/i.test(g);
-      (A(g),
-        va(q),
-        i(l.contract.symbol, l.hash, q ? "Failed" : "Not confirmed"));
+      const run = async () => {
+        if (changesPending) {
+          const stored = rn();
+          if (stored?.transaction?.hash !== f?.transaction?.hash ||
+              stored?.implementation?.id !== f?.implementation?.id) {
+            na(stored);
+            throw new Error("The deployment changed in another tab, review its current status");
+          }
+        }
+        await action();
+      };
+      if (changesPending && navigator.locks) {
+        await navigator.locks.request(X, { ifAvailable: true }, async lock => {
+          if (!lock) throw new Error("A deployment is already running in another tab");
+          await run();
+        });
+      } else {
+        await run();
+      }
+    } catch (error) {
+      A(da(error));
+    } finally {
+      C.current = false;
+      w("");
+    }
+  }
+  async function settle(pending, confirmAssistantContract) {
+    const { transaction, implementation } = pending;
+    const role = implementation ? "Transparent Proxy" : pending.proxy ? "Implementation" : transaction.contract.symbol;
+    w(`Waiting for Zenith finality · ${role}`);
+    let confirmed;
+    try {
+      confirmed = await confirmAssistantContract(transaction);
+    } catch (error) {
+      const reverted = /transaction reverted on zenith/i.test(da(error));
+      i(role, transaction.hash, reverted ? "Failed" : "Not confirmed");
+      if (reverted) savePending(implementation ? { ...pending, transaction: null } : null);
+      throw error;
+    }
+    i(role, transaction.hash, "Finalized");
+    const { record, receipt } = confirmed;
+    if (pending.proxy && !implementation) {
+      const result = {
+        ...record,
+        proxyIncomplete: true,
+        parts: [{ ...record.parts[0], role }],
+      };
+      savePending({ ...pending, transaction: null, implementation: result });
+      n(result);
+      return;
+    }
+    let result = record;
+    if (implementation) {
+      const part = { ...record.parts[0], role };
+      result = {
+        ...implementation,
+        address: record.address,
+        parts: [...implementation.parts, part],
+        proxyIncomplete: false,
+      };
+      try {
+        result.parts.push(await deploymentTools.readProxyAdmin({ ...part, receipt }));
+      } catch (error) {
+        A(`The proxy finalized, but the admin address could not be read: ${da(error)}`);
+      }
+    }
+    saveResult(result);
+    savePending(null);
+    if (pending.verify) {
+      w("Checking deployed bytecode…");
+      await checkResult(result);
     }
   }
   async function Qa() {
-    if (!(!s || !ia || !a.isConnected || z || f || C.current || N.current)) {
-      ((C.current = !0), A(""), ea(null), w("Checking the deployment…"));
-      try {
-        const { parseEther: l } = await V(
-            async () => {
-              const { parseEther: T } = await import("./lib.esm-CaOQ8GKa.js");
-              return { parseEther: T };
-            },
-            __vite__mapDeps([0, 1, 2, 3]),
-            import.meta.url,
-          ),
-          { submitAssistantContract: h, confirmAssistantContract: p } = await V(
-            async () => {
-              const {
-                submitAssistantContract: T,
-                confirmAssistantContract: B,
-              } = await import("./deployment-DiAeDUBl.js");
-              return {
-                submitAssistantContract: T,
-                confirmAssistantContract: B,
-              };
-            },
-            __vite__mapDeps([4, 2, 3, 1]),
-            import.meta.url,
-          ),
-          g = wa.trim();
-        if (g && !/^\d+(?:\.\d{1,18})?$/.test(g))
-          throw new Error("Enter a ZTH amount with up to 18 decimals");
-        const q = g ? l(g) : 0n;
-        if (q && (F == null ? void 0 : F.stateMutability) !== "payable")
-          throw new Error("This constructor does not accept ZTH");
-        const j = await h(a, s, ui(pa), q, () => w("Approve in your wallet…"));
-        (na(j),
-          sa(X, j),
-          i(j.contract.symbol, j.hash, "Pending"),
-          L(!1),
-          await xa(j, p));
-      } catch (l) {
-        A(da(l));
-      } finally {
-        ((C.current = !1), w(""));
+    if (!s || f || deployed || (!deploy && !verify) ||
+        (deploy && (!ia || !a.isConnected || (useProxy && !initializer)))) return;
+    return runDeployment(deploy ? "Checking the deployment…" : "Checking deployed bytecode…", async () => {
+      if (!deploy) {
+        const address = deploymentTools.normalizeDeploymentAddress(target.trim());
+        if (!address) throw new Error("Enter an existing Zenith Testnet contract address");
+        await checkResult({
+          id: `assistant:verify:${s.symbol}:${address.toLowerCase()}`,
+          name: s.symbol,
+          kind: "Custom",
+          owner: null,
+          created: Date.now(),
+          address,
+          parts: [{ role: s.symbol, address, hash: null, encoded: null, contract: s }],
+        });
+        return;
       }
-    }
+      ea(null);
+      const [{ parseEther }, { submitAssistantContract, confirmAssistantContract }] = await Promise.all([
+        import("./lib.esm-CaOQ8GKa.js"),
+        import("./deployment-DiAeDUBl.js"),
+      ]);
+      const args = ui(pa);
+      const value = deploymentValue(wa, F?.stateMutability === "payable", "constructor", parseEther);
+      let plan = null;
+      if (useProxy) {
+        const data = deploymentTools.encodeProxyInitializer(s, initName.trim(), ui(initArgs));
+        const value = deploymentValue(initValue, initializer.stateMutability === "payable", "initializer", parseEther);
+        await Promise.all([
+          deploymentTools.loadDeploymentArtifact("KitTransparentProxy", true),
+          deploymentTools.loadDeploymentArtifact("ProxyAdmin", true),
+        ]);
+        plan = { data, value: value.toString() };
+      }
+      const transaction = await submitAssistantContract(a, s, args, value, () => w("Approve in your wallet…"));
+      const pending = { transaction, proxy: plan, verify };
+      savePending(pending);
+      i(plan ? "Implementation" : s.symbol, transaction.hash, "Pending");
+      L(false);
+      await settle(pending, confirmAssistantContract);
+    }, deploy);
   }
   async function ai() {
-    if (!(!f || C.current || N.current)) {
-      ((C.current = !0), A(""), w("Checking Zenith…"));
-      try {
-        const { confirmAssistantContract: l } = await V(
-          async () => {
-            const { confirmAssistantContract: h } =
-              await import("./deployment-DiAeDUBl.js");
-            return { confirmAssistantContract: h };
-          },
-          __vite__mapDeps([4, 2, 3, 1]),
-          import.meta.url,
-        );
-        await xa(f, l);
-      } catch (l) {
-        A(da(l));
-      } finally {
-        ((C.current = !1), w(""));
-      }
-    }
+    if (!f?.transaction) return;
+    return runDeployment("Checking Zenith…", async () => {
+      const { confirmAssistantContract } = await import("./deployment-DiAeDUBl.js");
+      await settle(f, confirmAssistantContract);
+    }, true);
   }
-  const E = !!x || !!f,
-    ta =
-      (z == null ? void 0 : z.parts[0].hash) ?? (f == null ? void 0 : f.hash);
+  async function continueProxy() {
+    if (!a.isConnected || !f?.implementation || f.transaction) return;
+    return runDeployment("Checking the proxy deployment…", async () => {
+      const { implementation, proxy } = f;
+      const [{ submitAssistantContract, confirmAssistantContract }, artifact, match] = await Promise.all([
+        import("./deployment-DiAeDUBl.js"),
+        deploymentTools.loadDeploymentArtifact("KitTransparentProxy", true),
+        deploymentTools.checkDeploymentBytecode(implementation.parts[0]),
+        deploymentTools.loadDeploymentArtifact("ProxyAdmin", true),
+      ]);
+      if (match.state !== "Bytecode matched")
+        throw new Error(`Could not confirm the implementation bytecode: ${match.message ?? match.state}`);
+      const transaction = await submitAssistantContract(
+        a, artifact, [implementation.address, implementation.owner, proxy.data], BigInt(proxy.value),
+        () => w("Approve the proxy in your wallet…"), implementation.owner,
+      );
+      const pending = { ...f, transaction };
+      savePending(pending);
+      i("Transparent Proxy", transaction.hash, "Pending");
+      await settle(pending, confirmAssistantContract);
+    }, true);
+  }
+  const E = !!x || !!f;
+  const result = z ?? f?.implementation;
   return e.jsxs("div", {
     className: "stack assistant",
     children: [
@@ -993,6 +1104,7 @@ function hn({ wallet: a, record: i, save: n }) {
                 children: [
                   ["Number storage", "Create a contract that stores a number"],
                   ["Text storage", "Create a contract that stores a message"],
+                  ["Proxy-ready storage", proxyExampleRequest],
                   ...Pa,
                 ].map(([l, h]) =>
                   e.jsx(
@@ -1202,9 +1314,45 @@ function hn({ wallet: a, record: i, save: n }) {
                         children:
                           "Compilation does not check contract safety or confirm that the code matches your request",
                       }),
-                    !!(
-                      (Da = F == null ? void 0 : F.inputs) != null && Da.length
-                    ) &&
+                    !f && !deployed && e.jsxs("div", {
+                      className: "stack",
+                      children: [
+                        e.jsxs("div", {
+                          className: "action-row",
+                          role: "group",
+                          "aria-label": "Assistant deployment mode",
+                          children: [
+                            e.jsx(AssistantCheck, {
+                              label: "Deploy", checked: deploy, disabled: E,
+                              change: (checked) => { setDeploy(checked); L(false); },
+                            }),
+                            e.jsx(AssistantCheck, {
+                              label: "Verify", checked: verify, disabled: E, change: setVerify,
+                            }),
+                            deploy && e.jsx(AssistantCheck, {
+                              label: "Deploy as Proxy", checked: proxy, disabled: E,
+                              change: (checked) => { setProxy(checked); L(false); },
+                            }),
+                          ],
+                        }),
+                        verify && e.jsx("p", {
+                          className: "small muted",
+                          children: "Verify compares bytecode on Zenith Testnet without spending gas or publishing source code to the explorer",
+                        }),
+                        !deploy && verify && e.jsxs("label", {
+                          className: "field",
+                          children: [
+                            e.jsx("span", { children: "Existing contract address" }),
+                            e.jsx("input", {
+                              value: target, disabled: E, placeholder: "0x…",
+                              autoCapitalize: "off", spellCheck: false,
+                              onChange: (event) => setTarget(event.target.value),
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                    deploy && !f && !deployed && !!F?.inputs.length &&
                       e.jsxs("label", {
                         className: "field",
                         children: [
@@ -1225,7 +1373,7 @@ function hn({ wallet: a, record: i, save: n }) {
                           }),
                         ],
                       }),
-                    (F == null ? void 0 : F.stateMutability) === "payable" &&
+                    deploy && !f && !deployed && F?.stateMutability === "payable" &&
                       e.jsxs("label", {
                         className: "field",
                         children: [
@@ -1242,23 +1390,63 @@ function hn({ wallet: a, record: i, save: n }) {
                           }),
                         ],
                       }),
-                    !z &&
-                      !f &&
-                      e.jsxs("label", {
-                        className: "check",
+                    useProxy && !f && !deployed &&
+                      e.jsxs("div", {
+                        className: "stack",
                         children: [
-                          e.jsx("input", {
-                            type: "checkbox",
-                            checked: ia,
-                            disabled: E,
-                            onChange: (l) => L(l.target.checked),
+                          e.jsx(K, {
+                            mode: "warning",
+                            children: "A proxy takes two transactions, and your wallet owns its upgrade controls; check that a protected one-time initializer sets the proxy state instead of the constructor or state variable defaults",
                           }),
-                          "I reviewed the source and want to deploy it to Zenith Testnet",
+                          e.jsxs("label", {
+                            className: "field",
+                            children: [
+                              e.jsx("span", { children: "Initializer function" }),
+                              e.jsx("input", {
+                                value: initName, disabled: E, autoCapitalize: "off", spellCheck: false,
+                                onChange: (event) => { setInitName(event.target.value); L(false); },
+                              }),
+                              !initializer && e.jsx("small", {
+                                children: "Enter the name of a unique state-changing initializer in the compiled contract, or try Proxy-ready storage",
+                              }),
+                            ],
+                          }),
+                          initializer && e.jsxs("label", {
+                            className: "field",
+                            children: [
+                              e.jsx("span", { children: "Initializer arguments (JSON array)" }),
+                              e.jsx("input", {
+                                value: initArgs, disabled: E,
+                                onChange: (event) => { setInitArgs(event.target.value); L(false); },
+                              }),
+                              e.jsx("small", {
+                                children: initializer.inputs.length
+                                  ? initializer.inputs.map(input => `${input.name || "argument"}: ${input.type}`).join(", ")
+                                  : "Use [] for an initializer with no arguments",
+                              }),
+                            ],
+                          }),
+                          initializer?.stateMutability === "payable" && e.jsxs("label", {
+                            className: "field",
+                            children: [
+                              e.jsx("span", { children: "Initializer value in ZTH (optional)" }),
+                              e.jsx("input", {
+                                value: initValue, inputMode: "decimal", disabled: E,
+                                onChange: (event) => { setInitValue(event.target.value); L(false); },
+                              }),
+                            ],
+                          }),
                         ],
                       }),
+                    deploy && !f && !deployed && e.jsx(AssistantCheck, {
+                      label: useProxy
+                        ? "I reviewed the source and confirmed it is safe to initialize through a proxy"
+                        : "I reviewed the source and want to deploy it to Zenith Testnet",
+                      checked: ia, disabled: E, change: L,
+                    }),
                   ],
                 }),
-              s && !z && !f && !a.isConnected && e.jsx(kn, {}),
+              s && deploy && !deployed && !f && !a.isConnected && e.jsx(kn, {}),
 
               e.jsxs("div", {
                 className: "action-row",
@@ -1275,57 +1463,83 @@ function hn({ wallet: a, record: i, save: n }) {
                           c(null),
                           L(!1),
                           m(null),
+                          ea(null),
                           G({ ...k, name: k.name.trim() }, l)
                         ),
                       ),
                     children: "Compile source",
                   }),
-                  !z &&
-                    !f &&
+                  s && !deployed && !f && (deploy || verify) &&
                     e.jsx("button", {
                       type: "button",
                       className: "btn primary",
-                      "aria-label": "Deploy to Zenith Testnet",
-                      disabled: !s || !ia || !a.isConnected || E,
+                      "aria-label": deploy && !verify && !useProxy ? "Deploy to Zenith Testnet" : undefined,
+                      disabled: E || (deploy
+                        ? !ia || !a.isConnected || (useProxy && !initializer)
+                        : !target.trim()),
                       onClick: Qa,
-                      children: "Deploy",
+                      children: !deploy ? "Verify bytecode" : useProxy
+                        ? "Deploy implementation" : verify ? "Deploy and Verify" : "Deploy",
                     }),
                 ],
               }),
             ],
           }),
         }),
-      ta &&
+      (f || result) &&
         e.jsx(ua, {
-          title: z
-            ? "Deployment finalized"
-            : M
-              ? "Deployment reverted"
-              : "Transaction submitted",
+          title: f?.implementation
+            ? "Implementation finalized"
+            : f?.transaction ? "Transaction submitted"
+              : deployed ? "Deployment finalized" : "Verification result",
           label: e.jsx("span", {
-            className: `badge ${z ? "" : M ? "failed" : "pending"}`,
-            children: z ? "Finalized" : M ? "Reverted" : "Pending",
+            className: `badge ${f ? "pending" : deployed ? "" : "neutral"}`,
+            children: f?.transaction ? "Pending" : f ? "Proxy not deployed"
+              : deployed ? "Finalized" : result.parts[0].verification.state,
           }),
           children: e.jsxs("div", {
             className: "stack",
             children: [
-              z && e.jsx(_a, { label: "Contract address", value: z.address }),
-              e.jsx(_a, { label: "Transaction hash", value: ta }),
-              z && formatZthFee(z.parts[0].feeWei) && e.jsx("p", {
+              result?.parts.map((part, index) => e.jsxs("div", {
+                className: "stack",
+                children: [
+                  e.jsx(_a, {
+                    label: result.parts.length > 1 || result.proxyIncomplete ? `${part.role} address` : "Contract address",
+                    value: part.address,
+                  }),
+                  part.hash && !result.parts.slice(0, index).some(other => other.hash === part.hash) &&
+                    e.jsx(_a, {
+                      label: result.parts.length > 1 || result.proxyIncomplete ? `${part.role} transaction hash` : "Transaction hash",
+                      value: part.hash,
+                    }),
+                  part.verification?.state !== "Unverified" && e.jsx("p", {
+                    className: "small muted",
+                    children: [part.verification?.state, part.verification?.message && ` · ${part.verification.message}`],
+                  }),
+                  formatZthFee(part.feeWei) && e.jsx("p", {
+                    className: "small muted",
+                    children: `Network fee paid: ${formatZthFee(part.feeWei)}`,
+                  }),
+                  e.jsxs("div", {
+                    className: "action-row",
+                    children: [
+                      e.jsx(Ca, { href: ii(part.address), children: "View contract" }),
+                      part.hash && e.jsx(Ca, { href: ni(part.hash), children: "View transaction" }),
+                    ],
+                  }),
+                ],
+              }, part.address)),
+              f?.transaction && e.jsx(_a, { label: "Pending transaction hash", value: f.transaction.hash }),
+              f?.implementation && !f.transaction && e.jsx("p", {
                 className: "small muted",
-                children: `Network fee paid: ${formatZthFee(z.parts[0].feeWei)}`,
+                children: "Your implementation is saved, so you only need to approve the proxy with the same wallet",
               }),
+              f?.implementation && !f.transaction && !a.isConnected && e.jsx(kn, {}),
               e.jsxs("div", {
                 className: "action-row",
                 children: [
-                  z &&
-                    e.jsx(Ca, {
-                      href: ii(z.address),
-                      children: "View contract",
-                    }),
-                  e.jsx(Ca, { href: ni(ta), children: "View transaction" }),
-                  f &&
-                    !M &&
+                  f?.transaction && e.jsx(Ca, { href: ni(f.transaction.hash), children: "View pending transaction" }),
+                  f?.transaction &&
                     e.jsx("button", {
                       type: "button",
                       className: "btn ghost",
@@ -1333,20 +1547,48 @@ function hn({ wallet: a, record: i, save: n }) {
                       onClick: ai,
                       children: "Check transaction again",
                     }),
-                  M &&
+                  f?.implementation && !f.transaction &&
+                    e.jsx("button", {
+                      type: "button",
+                      className: "btn primary",
+                      disabled: !!x || !a.isConnected,
+                      onClick: continueProxy,
+                      children: "Continue proxy deployment",
+                    }),
+                  f?.implementation && !f.transaction &&
                     e.jsx("button", {
                       type: "button",
                       className: "btn ghost",
-                      onClick: () => {
-                        (na(null), sa(X, {}), va(!1), A(""));
-                      },
-                      children: "Clear reverted attempt",
+                      disabled: !!x,
+                      onClick: () => runDeployment("Closing the proxy attempt…", () => {
+                        if (!window.confirm("Stop this attempt and keep only the deployed implementation?")) return;
+                        saveResult(f.implementation);
+                        savePending(null);
+                      }, true),
+                      children: "Keep implementation only",
+                    }),
+                  deployed && !f &&
+                    e.jsx("button", {
+                      type: "button",
+                      className: "btn ghost",
+                      disabled: !!x,
+                      onClick: () => runDeployment("Checking deployed bytecode…", () => checkResult(z)),
+                      children: "Check deployed bytecode",
                     }),
                 ],
               }),
             ],
           }),
         }),
+    ],
+  });
+}
+function AssistantCheck({ label, checked, disabled, change }) {
+  return e.jsxs("label", {
+    className: "check",
+    children: [
+      e.jsx("input", { type: "checkbox", checked, disabled, onChange: event => change(event.target.checked) }),
+      label,
     ],
   });
 }

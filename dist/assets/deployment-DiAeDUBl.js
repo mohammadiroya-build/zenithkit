@@ -1,7 +1,7 @@
 import { a as C, b as c, p as E, e as T } from "./index-BOd0iaB5.js";
 import { g as u, B as v, C as A } from "./provider-browser-LBmMibJ8.js";
 import { deploymentFees, feePaid } from "./contract-fees.js";
-async function D(a, t, o, r, n) {
+async function D(a, t, o, r, n, expectedAccount) {
   var p;
   const i = await a.ensureWallet(),
     e = await ((p = a.connector) == null ? void 0 : p.getProvider());
@@ -12,8 +12,10 @@ async function D(a, t, o, r, n) {
   };
   await h();
   const y = new v(e, { name: c.name, chainId: c.id }),
-    s = u(i.account.address),
-    w = await y.getSigner(s),
+    s = u(i.account.address);
+  if (expectedAccount && s !== u(expectedAccount))
+    throw new Error("Reconnect the wallet that deployed the implementation");
+  const w = await y.getSigner(s),
     l = new A(t.abi, t.bytecode, w),
     g = l.interface.encodeDeploy(o),
     m = await l.getDeployTransaction(...o, { value: r });
@@ -37,11 +39,12 @@ async function D(a, t, o, r, n) {
 }
 async function k(a) {
   const t = await C(a.hash);
-  if (!t.contractAddress || u(t.from) !== a.account)
+  if (!t.contractAddress || u(t.from) !== u(a.account) ||
+      t.transactionHash.toLowerCase() !== a.hash.toLowerCase())
     throw new Error("The receipt does not match this contract deployment");
   const { hash: o, account: r, contract: n, encoded: i } = a,
     e = t.contractAddress;
-  return {
+  const record = {
     id: o,
     name: n.symbol,
     kind: "Custom",
@@ -60,5 +63,6 @@ async function k(a) {
       },
     ],
   };
+  return { record, receipt: t };
 }
 export { k as confirmAssistantContract, D as submitAssistantContract };

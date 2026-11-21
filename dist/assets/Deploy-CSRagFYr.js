@@ -2138,4 +2138,8 @@ const Os = Object.freeze(
     value: "Module",
   }),
 );
-export { ut as C, Os as D, ps as b, Xe as p, prepareAssistantCompiler };
+export {
+  ut as C, Os as D, ps as b, Xe as p, prepareAssistantCompiler,
+  $e as loadDeploymentArtifact, hs as encodeProxyInitializer,
+  fs as readProxyAdmin, ws as checkDeploymentBytecode, xe as normalizeDeploymentAddress,
+};
