@@ -15,6 +15,21 @@
       "simple": { "limit": 45, "period": 60 }
     }
   ],
+  "previews": {
+    "ai": { "binding": "AI" },
+    "ratelimits": [
+      {
+        "name": "CONTRACT_DRAFT_LIMIT",
+        "namespace_id": "1849923330",
+        "simple": { "limit": 8, "period": 60 }
+      },
+      {
+        "name": "CONTRACT_DRAFT_SHARED_LIMIT",
+        "namespace_id": "1432229547",
+        "simple": { "limit": 45, "period": 60 }
+      }
+    ]
+  },
   "assets": {
     "directory": "./dist",
     "run_worker_first": ["/api/contracts/*"]
