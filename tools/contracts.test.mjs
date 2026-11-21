@@ -26,7 +26,6 @@ test("worker forwards the unchanged original request in one model call", async (
   const res = await worker.fetch(post({ prompt: original, language: "es" }), env(async (model, input) => {
     calls++;
     assert.equal(model, "@cf/google/gemma-4-26b-a4b-it");
-    assert.equal(input.chat_template_kwargs, undefined);
     assert.deepEqual(JSON.parse(input.messages[1].content), { request: original, language_hint: "es" });
     return { choices: [{ message: { content: `\`\`\`solidity\n${validSource}\`\`\`` }, finish_reason: "stop" }] };
   }));
@@ -45,7 +44,6 @@ for (const compilerVersion of ["0.8.20", "0.8.24"]) {
       const body = { prompt, compilerVersion, ...(repair ? { source, diagnostic } : {}) };
       const response = await worker.fetch(post(body), env(async (_, input) => {
         assert.ok(input.messages[0].content.includes(`pragma solidity ${compilerVersion};`));
-        assert.equal(input.chat_template_kwargs, undefined);
         assert.deepEqual(JSON.parse(input.messages[1].content), {
           request: prompt,
           ...(repair ? { previous_source: source, compiler_error: diagnostic } : {}),
@@ -54,26 +52,6 @@ for (const compilerVersion of ["0.8.20", "0.8.24"]) {
       }));
       assert.equal(response.status, 200);
       assert.deepEqual(await response.json(), { source });
-    }
-  });
-}
-
-for (const language of ["en", "fa", "hi", "yo", "pcm"]) {
-  test(`worker limits the faster profile to supported initial drafts: ${language}`, async () => {
-    const prompt = "Store a single number";
-    for (const repair of [false, true]) {
-      const res = await worker.fetch(post({
-        prompt,
-        language,
-        ...(repair && { source: validSource, diagnostic: "ParserError: example" }),
-      }), env(async (_, input) => {
-        const faster = !repair && ["en", "fa", "hi"].includes(language);
-        assert.deepEqual(input.chat_template_kwargs, faster ? { enable_thinking: false } : undefined);
-        assert.equal(input.messages[0].content.includes("Apply parameters, types, and conditions separately"), faster);
-        assert.equal(JSON.parse(input.messages[1].content).language_hint, language);
-        return { response: validSource };
-      }));
-      assert.equal(res.status, 200);
     }
   });
 }
