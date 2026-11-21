@@ -3,9 +3,10 @@ const MAX_BODY = 24_576;
 const MAX_SOURCE = 15_000;
 const MAX_DIAGNOSTIC = 2_000;
 const SUPPORTED_COMPILERS = new Set(["0.8.20", "0.8.24"]);
+const FAST_DRAFT_LANGUAGES = new Set(["en", "fa", "hi"]);
+const EXACT_INTERFACES = "Treat prose in any language separately from code identifiers. Keep the contract name and each function name exactly as requested and distinct. Apply parameters, types, and conditions separately to each function. Do not add an input to a function that does not require one.";
 const SYSTEM = [
   "Draft Solidity contracts for Zenith EVM Testnet. Interpret the original request directly, including non-English input and any optional language hint. Keep identifiers, quoted values, addresses, access restrictions, and amounts unchanged where specified.",
-  "Treat prose in any language separately from code identifiers. Keep the contract name and each function name exactly as requested and distinct. Apply parameters, types, and conditions separately to each function. Do not add an input to a function that does not require one.",
   "Output exactly one complete Solidity source file, starting with an SPDX license comment followed by the exact Solidity pragma specified below, no prose or markdown. Use one deployable contract, with interfaces and libraries only when needed. Use English for generated comments and explanatory strings.",
   "If it helps, use only @openzeppelin/contracts imports from version 5.0.2. Write concise Solidity suitable for EVM Paris. Follow established security patterns, use explicit access controls when requested, and do not add hidden privileges, hard-coded recipients, transfers, or unrelated features.",
   "If the user explicitly requests a transparent proxy or an upgradeable implementation, output only the implementation, with a protected one-time initialize function that sets all proxy storage and a constructor that disables initializers on the implementation. Do not add upgrade functions to a transparent proxy implementation or silently change constructor-based dependencies that cannot initialize through a proxy.",
@@ -108,16 +109,18 @@ export default {
       draftRequest.previous_source = body.source;
       draftRequest.compiler_error = body.diagnostic;
     }
+    const fastDraft = !body.source && FAST_DRAFT_LANGUAGES.has(body.language);
+    const instructions = fastDraft ? `${SYSTEM} ${EXACT_INTERFACES}` : SYSTEM;
     const timeout = body.source ? 15_000 : 30_000;
     let timer;
     try {
       const result = await Promise.race([
         env.AI.run(MODEL, {
           messages: [
-            { role: "system", content: `${SYSTEM} Use this exact pragma: pragma solidity ${compilerVersion};` },
+            { role: "system", content: `${instructions} Use this exact pragma: pragma solidity ${compilerVersion};` },
             { role: "user", content: JSON.stringify(draftRequest) },
           ],
-          ...(!body.source && { chat_template_kwargs: { enable_thinking: false } }),
+          ...(fastDraft && { chat_template_kwargs: { enable_thinking: false } }),
           max_completion_tokens: 2200,
           temperature: 0.1,
         }),
