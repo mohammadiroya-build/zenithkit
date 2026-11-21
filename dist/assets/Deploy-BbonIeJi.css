@@ -1,1 +1,195 @@
-.assistant{min-width:0}.assistant-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,29%);gap:var(--space-4);align-items:start}.assistant-compose,.assistant-help{display:grid;gap:var(--space-3);min-width:0}.assistant .field>textarea{min-height:7rem;font-size:max(1rem,var(--text-sm))}.assistant .field>input{font-size:max(1rem,var(--text-sm))}.assistant-compose-actions{gap:var(--space-2)}.assistant-count{margin-inline-start:auto;font-variant-numeric:tabular-nums;white-space:nowrap}.assistant-help h2{display:flex;align-items:center;gap:var(--space-2)}.assistant-help code{font:var(--text-xs) var(--mono);color:var(--text);overflow-wrap:anywhere}.assistant-examples{display:flex;flex-wrap:wrap;gap:var(--space-2)}.assistant-examples .btn.small{min-height:2rem}.assistant-request{max-width:min(100%,48rem);justify-self:end;align-self:end;border-radius:var(--radius-lg);border:1px solid var(--border);background:var(--surface-2);padding:var(--space-3) var(--space-4);overflow-wrap:anywhere}.assistant-request p{white-space:pre-wrap;font-size:var(--text-sm)}.assistant-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(10rem,100%),1fr));gap:var(--space-3)}.assistant-details>div,.assistant-source{padding:var(--space-3) var(--space-4);border:1px solid var(--divider);background:var(--surface-2);border-radius:var(--radius-md);overflow-wrap:anywhere}.assistant-details dd{font-size:var(--text-sm);font-weight:600}.assistant-source summary{cursor:pointer;font-weight:600;font-size:var(--text-sm)}.assistant-result{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap;min-width:0}.assistant-result>div{min-width:0}.assistant-result .mono{font-size:var(--text-sm)}@media(max-width:740px){.assistant-layout{grid-template-columns:minmax(0,1fr)}}@media(max-width:540px){.deploy-mode-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2)}.deploy-mode-row>.btn{white-space:normal;min-height:44px;padding-inline:var(--space-2)}.deploy-mode-row>.btn:last-child{grid-column:1 / -1}.assistant-compose-actions .btn{min-height:44px;padding-inline:var(--space-3)}.assistant-examples .btn.small{min-height:2.5rem}.assistant .check{align-items:flex-start}.assistant .check input{margin-top:var(--space-1);flex:none}}
+.assistant {
+  min-width: 0;
+}
+.assistant-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 29%);
+  gap: var(--space-4);
+  align-items: start;
+}
+.assistant-compose,
+.assistant-help {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.assistant .field > textarea {
+  min-height: 7rem;
+  font-size: max(1rem, var(--text-sm));
+}
+.assistant .field > input {
+  font-size: max(1rem, var(--text-sm));
+}
+.assistant-compose-actions {
+  gap: var(--space-2);
+}
+.assistant-count {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.assistant-help h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.assistant-help code {
+  font: var(--text-xs) var(--mono);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.assistant-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.assistant-examples .btn.small {
+  min-height: 2rem;
+}
+.assistant-request {
+  max-width: min(100%, 48rem);
+  justify-self: end;
+  align-self: end;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: var(--space-3) var(--space-4);
+  overflow-wrap: anywhere;
+}
+.assistant-request p {
+  white-space: pre-wrap;
+  font-size: var(--text-sm);
+}
+.assistant-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
+  gap: var(--space-3);
+}
+.assistant-details > div,
+.assistant-source {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--divider);
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+.assistant-details dd {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.assistant-source summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.assistant-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.assistant-result > div {
+  min-width: 0;
+}
+.assistant-result .mono {
+  font-size: var(--text-sm);
+}
+.contract-workspace {
+  min-width: 0;
+}
+.contract-workspace .card,
+.contract-workspace .field,
+.contract-workspace .result-row > div,
+.contract-editor {
+  min-width: 0;
+}
+.contract-workspace .result-row .mono,
+.contract-workspace details > summary .mono {
+  overflow-wrap: anywhere;
+}
+.contract-workspace .pre {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.contract-editor {
+  display: grid;
+  gap: var(--space-2);
+}
+.contract-editor-actions .btn {
+  min-height: 44px;
+}
+.contract-editor-surface {
+  min-width: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.contract-editor-surface:focus-within {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 2px;
+}
+.contract-plain-source {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 20.625rem;
+  padding: var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  tab-size: 4;
+  resize: vertical;
+  outline: none;
+}
+@media (max-width: 740px) {
+  .assistant-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 540px) {
+  .contract-workspace .field input,
+  .contract-workspace .field textarea,
+  .contract-workspace .field select,
+  .contract-plain-source {
+    font-size: max(1rem, var(--text-sm));
+  }
+  .contract-plain-source {
+    min-height: 16rem;
+    padding: var(--space-3);
+  }
+  .contract-workspace .action-row {
+    flex-wrap: wrap;
+  }
+  .deploy-mode-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+  .deploy-mode-row > .btn {
+    white-space: normal;
+    min-height: 44px;
+    padding-inline: var(--space-2);
+  }
+  .deploy-mode-row > .btn:last-child {
+    grid-column: 1 / -1;
+  }
+  .assistant-compose-actions .btn {
+    min-height: 44px;
+    padding-inline: var(--space-3);
+  }
+  .assistant-examples .btn.small {
+    min-height: 2.5rem;
+  }
+  .assistant .check {
+    align-items: flex-start;
+  }
+  .assistant .check input {
+    margin-top: var(--space-1);
+    flex: none;
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "zenithkit",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "test -f dist/index.html"
+  },
+  "devDependencies": {
+    "wrangler": "4.166.0"
+  }
+}

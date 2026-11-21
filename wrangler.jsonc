@@ -1,9 +1,22 @@
 {
   "name": "zenithkit",
   "compatibility_date": "2026-11-20",
-  "main": "./workers/model-downloads.mjs",
+  "main": "./workers/contracts.mjs",
+  "ai": { "binding": "AI" },
+  "ratelimits": [
+    {
+      "name": "CONTRACT_DRAFT_LIMIT",
+      "namespace_id": "93648501",
+      "simple": { "limit": 8, "period": 60 }
+    },
+    {
+      "name": "CONTRACT_DRAFT_SHARED_LIMIT",
+      "namespace_id": "93648502",
+      "simple": { "limit": 45, "period": 60 }
+    }
+  ],
   "assets": {
     "directory": "./dist",
-    "run_worker_first": ["/_models/*"]
+    "run_worker_first": ["/api/contracts/*"]
   }
 }

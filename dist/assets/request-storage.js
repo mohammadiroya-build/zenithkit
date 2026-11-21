@@ -4,7 +4,6 @@ const requests = [
     type: "uint256",
     forms: [
       /^(?:(?:create|write|build|make) (?:a |an )?(?:simple )?(?:smart )?contract (?:that stores|to store)|(?:store|save)) (?:a |an )?(?:(?:unsigned )?(?:integer|number)|uint256)(?:(?:,| and)? with (?:a )?(?:getter and setter|setter and getter)| and (?:read it back|read it))?$/iu,
-      /^(?:(?:یک )?قرارداد(?: هوشمند)? (?:ساده )?(?:بساز|بنویس|ایجاد کن) که (?:یک )?عدد(?: صحیح)? (?:را )?ذخیره کند|(?:(?:ساخت|ایجاد) )?(?:یک )?قرارداد(?: هوشمند)? برای ذخیره(?: کردن)? (?:یک )?عدد(?: صحیح)?)(?: و (?:آن را بخواند|امکان خواندن و تغییر آن را داشته باشد|توابع? (?:تنظیم و خواندن|خواندن و تغییر) داشته باشد))?$/u,
       /^(?:crea|scrivi|genera) un contratto(?: intelligente)? (?:che (?:memorizza|memorizzi|salva|salvi)|per (?:memorizzare|salvare)) un numero(?:,? con funzioni per (?:aggiornare e leggere|leggere e aggiornare) il numero)?$/iu,
       /^(?:crea|escribe|genera) un contrato(?: inteligente)? (?:que (?:almacene|guarde)|para (?:almacenar|guardar)) un número$/iu,
       /^(?:crée|écris|génère) un contrat(?: intelligent)? (?:qui (?:stocke|enregistre)|pour (?:stocker|enregistrer)) un nombre$/iu,
@@ -20,7 +19,6 @@ const requests = [
     type: "string",
     forms: [
       /^(?:(?:create|write|build|make) (?:a )?(?:simple )?(?:smart )?contract (?:that stores|to store)|(?:store|save)) (?:a )?(?:text|message|string)(?:(?:,| and)? with (?:a )?(?:getter and setter|setter and getter)| and (?:read it back|read it))?$/iu,
-      /^(?:(?:یک )?قرارداد(?: هوشمند)? (?:ساده )?(?:بساز|بنویس|ایجاد کن) که (?:یک )?(?:متن|پیام) (?:را )?ذخیره کند|(?:(?:ساخت|ایجاد) )?(?:یک )?قرارداد(?: هوشمند)? برای ذخیره(?: کردن)? (?:یک )?(?:متن|پیام))(?: و (?:آن را بخواند|امکان خواندن و تغییر آن را داشته باشد))?$/u,
       /^(?:crea|scrivi|genera) un contratto(?: intelligente)? (?:che (?:memorizza|memorizzi|salva|salvi)|per (?:memorizzare|salvare)) un (?:testo|messaggio)$/iu,
       /^(?:crea|escribe|genera) un contrato(?: inteligente)? (?:que (?:almacene|guarde)|para (?:almacenar|guardar)) un (?:texto|mensaje)$/iu,
       /^(?:crée|écris|génère) un contrat(?: intelligent)? (?:qui (?:stocke|enregistre)|pour (?:stocker|enregistrer)) un (?:texte|message)$/iu,
@@ -37,7 +35,7 @@ const requests = [
 export function matchStorageRequest(request) {
   if (typeof request !== "string" || request.length > 1600) return null;
   let text = request.replace(/\s+/gu, " ").trim();
-  const nameMatch = /(?:^|\s)(?:contract name|solidity name|نام\s+قرارداد|اسم\s+قرارداد)\s*[:：]\s*([A-Za-z_]\w{0,63})[.!؟۔。]?$/iu.exec(text);
+  const nameMatch = /(?:^|\s)(?:contract name|solidity name)\s*[:：]\s*([A-Za-z_]\w{0,63})[.!؟۔。]?$/iu.exec(text);
   if (nameMatch && !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(nameMatch[1])) return null;
   if (nameMatch) text = text.slice(0, nameMatch.index).trim();
   text = text.normalize("NFC").replace(/[.!؟۔。]+$/u, "").trim();
