@@ -8,6 +8,7 @@ The existing `zenithkit` Cloudflare Workers Builds connection deploys the `main`
 
 ## Contract workspace
 
+- Custom compiler and Contract Assistant each require an explicit choice of Solidity 0.8.20 or 0.8.24 before typing or pasting. Pasted source must be compatible with the selected version. Both versions target EVM Paris
 - Quick templates compile in your browser without an account or model download. Hosted drafting takes custom or multilingual requests directly through a Workers AI binding on your Cloudflare account, so you do not need to add a key to the frontend
 - Gemma 4 runs within [Cloudflare’s Workers AI allocation](https://developers.cloudflare.com/workers-ai/platform/pricing/) on the Free plan. The allowance is shared at account level. Paid plans can incur overage charges. The Worker uses client and shared per-location rate limits, not a global spending cap
 - Hosted drafting receives the description and, for a compiler repair, the draft and compiler error. Do not include credentials or private source. Treat all drafts as unaudited. Time limits, cancellation and manual Solidity input remain available
@@ -17,4 +18,4 @@ The existing `zenithkit` Cloudflare Workers Builds connection deploys the `main`
 
 ## Smoke check
 
-Open `/#/deploy`. Build the Number storage example, then try a custom request if Workers AI is enabled. Switch to Custom compiler, paste copied Solidity, and check that compilation succeeds. Verify can be tested with a known address without paying gas. Neither the wallet nor a private key is needed for the smoke check
+Open `/#/deploy`. Select a compiler and build the Number storage example, then try a custom request if Workers AI is enabled. Switch to Custom compiler, select the same version, paste the Solidity, and check that compilation succeeds. Repeat with the other compiler. Verify can be tested with a known address without paying gas. Neither the wallet nor a private key is needed for the smoke check

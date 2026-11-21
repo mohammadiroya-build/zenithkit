@@ -53,6 +53,8 @@ import {
   aL as Mt,
 } from "./index-BOd0iaB5.js";
 import { SoliditySourceInput } from "./solidity-source-input.js";
+import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
+import { getCompilerBuild } from "./compiler-versions.js";
 import { deploymentFees, feePaid, formatZthFee } from "./contract-fees.js";
 import { compareRuntimeBytecode, metadataTail } from "./contract-bytecode.js";
 /**
@@ -225,7 +227,7 @@ function rs(t, r, n, s, o, i = !1) {
     metadata: h,
   };
 }
-const ze = { compilerVersion: "0.8.20+commit.a1b79de6", evmVersion: "paris" },
+const ze = { evmVersion: "paris" },
   ns = { "@openzeppelin/contracts": "openzeppelin-ide" },
   ye = (t) => !!t && typeof t == "object" && !Array.isArray(t),
   Ge = (t) => Object.keys(ns).some((r) => t.startsWith(`${r}/`)),
@@ -296,7 +298,7 @@ ${h.join(`
       : ""
   }`);
 }
-async function ds(t, r, n, s, o = []) {
+async function ds(t, r, n, s, o, expectedBuild) {
   var N;
   if (!t.trim() || Ke.encode(t).length > K.fileBytes)
     throw new Error("Enter Solidity source up to 500 KB");
@@ -336,8 +338,8 @@ async function ds(t, r, n, s, o = []) {
     u = is(a, i == null ? void 0 : i.settings);
   for (let l = 0; l < 24; l++) {
     const { output: S, compilerVersion: T } = await s(u);
-    if (T !== ze.compilerVersion)
-      throw new Error(`Expected Solidity ${ze.compilerVersion}`);
+    if (T !== expectedBuild)
+      throw new Error(`Expected Solidity ${expectedBuild}`);
     let p = !1;
     for (const j of S.errors ?? []) {
       if (j.errorCode !== "6275") continue;
@@ -437,8 +439,9 @@ async function templateForVerification(name, address) {
   if (tail && tail === metadataTail(compact.deployedBytecode)) return compact;
   return original;
 }
-async function us(t) {
-  const r = "worker-0.8.20.js";
+async function us(t, version) {
+  getCompilerBuild(version);
+  const r = `worker-${version}.js`;
   if (globalThis.origin !== "null")
     return { worker: new Worker(le(`compiler/${r}`)), release: () => {} };
   const n = async (i) => {
@@ -450,7 +453,7 @@ async function us(t) {
         throw new Error("Could not load the bundled Solidity compiler");
       return h.text();
     },
-    s = await Promise.all(["soljson-0.8.20.js", r].map(n));
+    s = await Promise.all([`soljson-${version}.js`, r].map(n));
   t == null || t.throwIfAborted();
   const o = URL.createObjectURL(
     new Blob(
@@ -489,10 +492,10 @@ function ms() {
       }))
   );
 }
-async function prepareAssistantCompiler(signal) {
+async function prepareAssistantCompiler(signal, version) {
   const limit = AbortSignal.any([signal, AbortSignal.timeout(25_000)]);
   limit.throwIfAborted();
-  const { worker, release } = await us(limit);
+  const { worker, release } = await us(limit, version);
   let closed = false;
   const close = () => {
     if (!closed) {
@@ -532,18 +535,21 @@ async function prepareAssistantCompiler(signal) {
       }),
     ]);
     limit.throwIfAborted();
-    return { worker, close };
+    return { worker, close, version };
   } catch (error) {
     close();
     throw error;
   }
 }
-async function ps(t, r, n, s, prepared) {
+async function ps(t, r, n, s, version, prepared) {
   s == null || s.throwIfAborted();
+  const expectedBuild = getCompilerBuild(version);
+  if (prepared && prepared.version !== version)
+    throw new Error(`Expected a compiler prepared for Solidity ${version}`);
   const usesImports = n.length || t.trimStart().startsWith("{") || /\bimport\b/.test(t);
   const o = usesImports ? await ms() : {};
   s == null || s.throwIfAborted();
-  const owned = prepared ? null : await us(s),
+  const owned = prepared ? null : await us(s, version),
     i = prepared?.worker ?? owned.worker,
     h = Date.now() + 45e3,
     x = (m) =>
@@ -572,7 +578,7 @@ async function ps(t, r, n, s, prepared) {
         }
       });
   try {
-    return await ds(t, r, o, x, n);
+    return await ds(t, r, o, x, n, expectedBuild);
   } finally {
     if (owned) {
       i.terminate();
@@ -1166,17 +1172,17 @@ const Ns = d.lazy(() =>
   Ss = { ZenithToken: Rt, TokenBurner: Ft, ZenithVault: Wt, Greeting: mt },
   st = { chainId: 936485 },
   ht = "zenith-kit-user-contracts",
-  Cs = [
-    "Paste your Solidity code into the editor",
-    "Upload any external files like OpenZeppelin if your code needs them",
-    "The system will automatically compile your code for the Zenith network",
-    "Click Deploy and confirm the transaction in your MetaMask",
-    "Your contract will be live on the Zenith Testnet",
-    "Check the error console if you see any red messages",
-    "Make sure your wallet is connected to Zenith before deploying",
+  constructorHelp = [
+    ["Constructor arguments, JSON", "Enter a JSON array in constructor order, use [\"Hello\", 42] for a string and a number, or [] for no arguments"],
+    ["Constructor value in ZTH", "Send ZTH to a payable constructor, enter 0.25 to send that amount, otherwise leave it blank"],
   ],
-  Es = `// SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+  proxyHelp = [
+    ["Initializer function", "Enter the function name only, for example initialize for initialize(uint256)"],
+    ["Initializer arguments, JSON", "Enter a JSON array in initializer order, use [42] for the example above or [] for no arguments"],
+    ["Initializer value in ZTH", "Send ZTH to a payable initializer, enter 0.1 to send that amount, otherwise leave it blank"],
+  ],
+  Es = (version) => `// SPDX-License-Identifier: MIT
+pragma solidity ${version};
 
 contract HelloZenith {
     string public message = "Hello, Zenith";
@@ -1186,6 +1192,19 @@ contract HelloZenith {
     }
 }
 `;
+function DeploymentHelpFields({ fields }) {
+  return e.jsx("dl", {
+    className: "deployment-help-fields",
+    children: fields.map(([label, description]) =>
+      e.jsxs("div", {
+        children: [
+          e.jsx("dt", { children: label }),
+          e.jsx("dd", { children: description }),
+        ],
+      }, label),
+    ),
+  });
+}
 function rt(t) {
   return { name: t, values: F[t].fields.map((r) => r[1]) };
 }
@@ -1247,7 +1266,8 @@ function zs({ record: t }) {
     [i, a] = d.useState(!1),
     [h, x] = d.useState("ZenithToken"),
     [m, y] = d.useState(() => rt("ZenithToken")),
-    [u, N] = d.useState(Es),
+    [u, N] = d.useState(""),
+    [compilerVersion, setCompilerVersion] = d.useState(""),
     [l, S] = d.useState(""),
     [T, p] = d.useState([]),
     [g, b] = d.useState(!1),
@@ -1271,18 +1291,18 @@ function zs({ record: t }) {
     Ue = d.useRef(null),
     se = d.useRef(!1),
     W = d.useMemo(
-      () => ({ source: u, name: l.trim(), imports: T, attempt: Ze }),
-      [u, l, T, Ze],
+      () => ({ source: u, name: l.trim(), imports: T, attempt: Ze, version: compilerVersion }),
+      [u, l, T, Ze, compilerVersion],
     ),
     U = (ue == null ? void 0 : ue.request) === W ? ue : null,
     _ = U == null ? void 0 : U.contract,
-    Re = s === "custom" && !g && !U;
+    Re = s === "custom" && !!compilerVersion && !!u.trim() && !g && !U;
   d.useEffect(() => {
-    if (s !== "custom" || g || U) return;
+    if (s !== "custom" || !W.version || !W.source.trim() || g || U) return;
     const c = new AbortController(),
       f = setTimeout(async () => {
         try {
-          const C = await ps(W.source, W.name, W.imports, c.signal);
+          const C = await ps(W.source, W.name, W.imports, c.signal, W.version);
           c.signal.aborted || Ve({ request: W, contract: C });
         } catch (C) {
           c.signal.aborted ||
@@ -1293,6 +1313,13 @@ function zs({ record: t }) {
       (clearTimeout(f), c.abort());
     };
   }, [s, g, U, W]);
+  function changeCompiler(next) {
+    if (next === compilerVersion) return;
+    if ((!compilerVersion && !u) || (compilerVersion && u === Es(compilerVersion))) {
+      N(Es(next));
+    }
+    setCompilerVersion(next);
+  }
   function re(c) {
     const f = [c, ...Me.current.filter((C) => C.id !== c.id)];
     ((Me.current = f), gt(f), Zt(ht, f), pe(c));
@@ -1619,9 +1646,18 @@ The implementation address was saved, the proxy did not finalize`
                 return (c = Ue.current) == null ? void 0 : c.focus();
               }));
           },
-          children: e.jsx("ol", {
-            className: "list-decimal ps-5 space-y-2 text-sm",
-            children: Cs.map((c) => e.jsx("li", { children: c }, c)),
+          children: e.jsxs("div", {
+            className: "stack deployment-help",
+            children: [
+              e.jsx("h3", { children: "Constructor fields" }),
+              e.jsx(DeploymentHelpFields, { fields: constructorHelp }),
+              e.jsx("h3", { children: "When Deploy as Proxy is on" }),
+              e.jsx("p", {
+                className: "small muted",
+                children: "The constructor runs on the implementation, the initializer sets up the proxy",
+              }),
+              e.jsx(DeploymentHelpFields, { fields: proxyHelp }),
+            ],
           }),
         }),
       s !== "assistant" &&
@@ -1629,15 +1665,10 @@ The implementation address was saved, the proxy did not finalize`
           title: s === "custom" ? "Solidity compiler" : F[h].title,
           label:
             s === "custom" &&
-            e.jsx("button", {
-              ref: Ue,
-              type: "button",
-              className: "icon-btn font-semibold",
-              "aria-label": "Deployment help",
-              "aria-haspopup": "dialog",
-              title: "Deployment help",
-              onClick: () => z(!0),
-              children: "?",
+            e.jsx(ContractHelpButton, {
+              buttonRef: Ue,
+              label: "Deployment help",
+              open: () => z(!0),
             }),
           children: e.jsxs("form", {
             className: "stack",
@@ -1646,22 +1677,28 @@ The implementation address was saved, the proxy did not finalize`
               s === "custom"
                 ? e.jsxs(e.Fragment, {
                     children: [
+                      e.jsx(CompilerVersionField, {
+                        value: compilerVersion,
+                        change: changeCompiler,
+                        disabled: !!k,
+                        hint: "Choose the version allowed by your source pragma",
+                      }),
                       e.jsx(L, {
                         label: "Contract Name",
                         value: l,
                         change: S,
-                        disabled: !!k,
+                        disabled: !!k || !compilerVersion,
                         hint: "Optional when the editor contains one deployable contract",
                       }),
                       e.jsx(SoliditySourceInput, {
                         value: u,
                         change: N,
                         disabled: !!k,
+                        locked: !compilerVersion,
                       }),
                       e.jsx("p", {
                         className: "small muted",
-                        children:
-                          "Solidity 0.8.20 · EVM Paris · Optimizer on · OpenZeppelin 5.0.2 bundled",
+                        children: `${compilerVersion ? `Solidity ${compilerVersion} · ` : ""}EVM Paris · Optimizer on · OpenZeppelin 5.0.2 bundled`,
                       }),
                       e.jsx("p", {
                         className: "small muted",
@@ -1673,7 +1710,7 @@ The implementation address was saved, the proxy did not finalize`
                         change: p,
                         reading: g,
                         setReading: b,
-                        disabled: !!k,
+                        disabled: !!k || !compilerVersion,
                       }),
                       e.jsxs("section", {
                         className:
@@ -1692,7 +1729,7 @@ The implementation address was saved, the proxy did not finalize`
                                 className: "btn ghost small",
                                 type: "button",
                                 onClick: () => yt((c) => c + 1),
-                                disabled: Re || g || !!k,
+                                disabled: !compilerVersion || !u.trim() || Re || g || !!k,
                                 children: "Compile",
                               }),
                             ],

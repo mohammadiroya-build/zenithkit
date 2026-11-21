@@ -1,0 +1,70 @@
+.compiler-version-field {
+  width: min(100%, 24rem);
+  min-width: 0;
+}
+
+.contract-help-button {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.assistant-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.assistant-layout-with-modal {
+  min-width: 0;
+}
+
+.assistant-modal-help .assistant-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.deployment-help {
+  gap: var(--space-3);
+}
+
+.deployment-help h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.deployment-help-fields {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.deployment-help-fields dt {
+  font-weight: 650;
+}
+
+.deployment-help-fields dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.explore-list > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.explore-list .explore-item {
+  min-height: 44px;
+}
+
+@media (max-width: 420px) {
+  .assistant-heading-actions > .badge {
+    display: none;
+  }
+
+  .dialog:has(.deployment-help, .assistant-modal-help) {
+    padding: var(--space-4);
+  }
+}

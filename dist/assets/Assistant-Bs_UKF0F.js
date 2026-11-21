@@ -2,6 +2,7 @@ import { requestLanguages } from "./request-languages.js";
 import { matchStorageRequest } from "./request-storage.js";
 import { createBuildTiming, formatBuildTime } from "./build-timing.js";
 import { formatZthFee } from "./contract-fees.js";
+import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { deploymentValue, initializerFor, readAssistantDeployment } from "./assistant-deployment-plan.js";
 import * as deploymentTools from "./Deploy-CSRagFYr.js";
 import {
@@ -17,6 +18,7 @@ import {
   e as ha,
   ar as ei,
   as as oi,
+  aJ as HelpDialog,
 } from "./index-BOd0iaB5.js";
 import { C as ti, p as ui, b as si } from "./Deploy-CSRagFYr.js"; /**
  * @license lucide-react v0.548.0 - ISC
@@ -29,23 +31,7 @@ const li = [
     ["path", { d: "M12 19V5", key: "x0mq9r" }],
   ],
   ri = Oa("arrow-up", li);
-/**
- * @license lucide-react v0.548.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */ const ki = [
-    ["path", { d: "M12 7v14", key: "1akyts" }],
-    [
-      "path",
-      {
-        d: "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z",
-        key: "ruj8y",
-      },
-    ],
-  ],
-  mi = Oa("book-open", ki),
-  W = 1600,
+const W = 1600,
   la = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/,
   Ma = String.raw`(?:\d{1,3}(?:[,]\d{3})+|\d+)(?:[.]\d+)?`,
   hi = String.raw`(?:thousand|million|billion|k|m|b)`,
@@ -566,14 +552,14 @@ contract ${a} is Ownable2Step {
 function sn({ kind: a, contractName: i, values: n }) {
   return { ...un[a](i, n), name: i, generated: !1 };
 }
-async function hostedDraft(prompt, language, signal, repair) {
+async function hostedDraft(prompt, language, signal, compilerVersion, repair) {
   const timeout = AbortSignal.timeout(repair ? 18_000 : 33_000);
   let response;
   try {
     response = await fetch(new URL("../api/contracts/draft", import.meta.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, language: language || undefined, ...repair }),
+      body: JSON.stringify({ prompt, language: language || undefined, compilerVersion, ...repair }),
       signal: AbortSignal.any([signal, timeout]),
     });
   } catch {
@@ -644,6 +630,8 @@ const X = "zenith-kit-assistant-pending",
   rn = () => readAssistantDeployment(ei(X, null));
 function hn({ wallet: a, record: i, save: n }) {
   const [o, t] = y.useState(""),
+    [compilerVersion, setCompilerVersion] = y.useState(""),
+    [helpOpen, setHelpOpen] = y.useState(false),
     [requestLanguage, setRequestLanguage] = y.useState(""),
     [buildTimings, setBuildTimings] = y.useState(null),
     [r, d] = y.useState(""),
@@ -667,14 +655,29 @@ function hn({ wallet: a, record: i, save: n }) {
     N = y.useRef(null),
     C = y.useRef(!1),
     fa = y.useRef(null),
+    helpButton = y.useRef(null),
     D = y.useRef(null),
     F = s?.abi.find((l) => l.type === "constructor"),
     initializer = initializerFor(s, initName),
     useProxy = deploy && proxy,
     deployed = z?.parts.some(part => part.hash);
   function Ya(l) {
-    var h;
-    (setRequestLanguage(""), t(l), (h = fa.current) == null || h.focus());
+    if (!compilerVersion) return;
+    setRequestLanguage("");
+    t(l);
+    setHelpOpen(false);
+    requestAnimationFrame(() => fa.current?.focus());
+  }
+  function closeHelp() {
+    setHelpOpen(false);
+    requestAnimationFrame(() => helpButton.current?.focus());
+  }
+  function changeCompiler(next) {
+    if (next === compilerVersion) return;
+    setCompilerVersion(next);
+    if (!k) return;
+    setBuildTimings(null);
+    oa(k.editable ? k : null);
   }
   function za(l) {
     (b(l), c(null), L(!1), ca("[]"), ja(""), ea(null));
@@ -692,11 +695,11 @@ function hn({ wallet: a, record: i, save: n }) {
 
   async function G(l, h, prepared) {
     w("Compiling in your browser…");
-    const p = await si(l.source, l.name, [], h.signal, prepared);
+    const p = await si(l.source, l.name, [], h.signal, compilerVersion, prepared);
     return (h.signal.throwIfAborted(), c(p), p);
   }
   async function qa(l) {
-    if (N.current || C.current || f) return;
+    if (!compilerVersion || N.current || C.current || f) return;
     const h = new AbortController();
     ((N.current = h), A(""));
     try {
@@ -710,6 +713,7 @@ function hn({ wallet: a, record: i, save: n }) {
   function Ja(event) {
     event.preventDefault();
     const request = o.trim();
+    if (!request) return;
     return qa(async (build) => {
       const timing = createBuildTiming();
       const signal = AbortSignal.any([build.signal, AbortSignal.timeout(56_000)]);
@@ -734,16 +738,20 @@ function hn({ wallet: a, record: i, save: n }) {
           }
         });
         if (quick) {
-          b(quick);
+          const selected = {
+            ...quick,
+            source: quick.source.replace(/^pragma solidity 0\.8\.20;$/m, `pragma solidity ${compilerVersion};`),
+          };
+          b(selected);
           if (D.current) D.current.open = false;
-          await timing.measure("compile", () => G(quick, { signal }));
+          await timing.measure("compile", () => G(selected, { signal }));
         } else {
           compilerTask = timing.measure("compilerPrep", () =>
-            deploymentTools.prepareAssistantCompiler(signal)
+            deploymentTools.prepareAssistantCompiler(signal, compilerVersion)
           ).catch(() => null);
           w("Drafting Solidity…");
           const source = await timing.measure("draft", () =>
-            hostedDraft(request, requestLanguage, signal)
+            hostedDraft(request, requestLanguage, signal, compilerVersion)
           );
           signal.throwIfAborted();
           const draft = { ...Ia(""), title: "Custom draft", generated: true, source };
@@ -762,7 +770,7 @@ function hn({ wallet: a, record: i, save: n }) {
             let repaired;
             try {
               repaired = await timing.measure("repair", () =>
-                hostedDraft(request, requestLanguage, signal, { source, diagnostic: ha(error).slice(0, 2000) })
+                hostedDraft(request, requestLanguage, signal, compilerVersion, { source, diagnostic: ha(error).slice(0, 2000) })
               );
             } catch (repairError) {
               signal.throwIfAborted();
@@ -788,7 +796,8 @@ function hn({ wallet: a, record: i, save: n }) {
     });
   }
   function Xa() {
-    N.current ||
+    !compilerVersion ||
+      N.current ||
       C.current ||
       f ||
       (d(""),
@@ -974,13 +983,20 @@ function hn({ wallet: a, record: i, save: n }) {
     className: "stack assistant",
     children: [
       e.jsxs("div", {
-        className: "assistant-layout",
+        className: "assistant-layout-with-modal",
         children: [
           e.jsxs(ua, {
             title: "Contract Assistant",
-            label: e.jsx("span", {
-              className: "badge neutral",
-              children: "No model download",
+            label: e.jsxs("div", {
+              className: "assistant-heading-actions",
+              children: [
+                e.jsx("span", { className: "badge neutral", children: "No model download" }),
+                e.jsx(ContractHelpButton, {
+                  label: "Contract Assistant help",
+                  buttonRef: helpButton,
+                  open: () => setHelpOpen(true),
+                }),
+              ],
             }),
             children: [
               e.jsx("p", {
@@ -992,6 +1008,12 @@ function hn({ wallet: a, record: i, save: n }) {
                 className: "assistant-compose",
                 onSubmit: Ja,
                 children: [
+                  e.jsx(CompilerVersionField, {
+                    value: compilerVersion,
+                    change: changeCompiler,
+                    disabled: E,
+                    hint: "Select a version to unlock the request and Solidity editor",
+                  }),
                   e.jsxs("label", {
                     className: "field",
                     children: [
@@ -1002,7 +1024,7 @@ function hn({ wallet: a, record: i, save: n }) {
                         maxLength: W,
                         rows: 4,
                         placeholder: ln,
-                        disabled: E,
+                        disabled: E || !compilerVersion,
                         dir: "auto",
                         onChange: (l) => t(l.target.value),
                       }),
@@ -1014,7 +1036,7 @@ function hn({ wallet: a, record: i, save: n }) {
                       e.jsx("span", { children: "Request language" }),
                       e.jsxs("select", {
                         value: requestLanguage,
-                        disabled: E,
+                        disabled: E || !compilerVersion,
                         onChange: (l) => setRequestLanguage(l.target.value),
                         children: [
                           e.jsx("option", {
@@ -1038,7 +1060,7 @@ function hn({ wallet: a, record: i, save: n }) {
                       e.jsxs("button", {
                         type: "submit",
                         className: "btn primary",
-                        disabled: !o.trim() || E,
+                        disabled: !compilerVersion || !o.trim() || E,
                         children: [
                           e.jsx(ri, { size: 16, "aria-hidden": "true" }),
                           "Build contract",
@@ -1047,7 +1069,7 @@ function hn({ wallet: a, record: i, save: n }) {
                       e.jsxs("button", {
                         type: "button",
                         className: "btn ghost",
-                        disabled: E,
+                        disabled: E || !compilerVersion,
                         onClick: Xa,
                         children: [
                           e.jsx(ti, { size: 16, "aria-hidden": "true" }),
@@ -1081,18 +1103,12 @@ function hn({ wallet: a, record: i, save: n }) {
               }),
             ],
           }),
-          e.jsxs("aside", {
-            className: "card assistant-help",
-            "aria-labelledby": "assistant-help",
-            children: [
-              e.jsxs("h2", {
-                className: "card-title",
-                id: "assistant-help",
-                children: [
-                  e.jsx(mi, { size: 17, "aria-hidden": "true" }),
-                  "Help",
-                ],
-              }),
+          helpOpen && e.jsx(HelpDialog, {
+            title: "Help",
+            close: closeHelp,
+            children: e.jsxs("div", {
+              className: "stack assistant-modal-help",
+              children: [
               e.jsx("p", {
                 className: "small muted",
                 children:
@@ -1112,7 +1128,7 @@ function hn({ wallet: a, record: i, save: n }) {
                     {
                       type: "button",
                       className: "btn ghost small",
-                      disabled: E,
+                      disabled: E || !compilerVersion,
                       onClick: () => Ya(h),
                       children: l,
                     },
@@ -1128,7 +1144,8 @@ function hn({ wallet: a, record: i, save: n }) {
                   " to choose the Solidity name, then check the draft against your request before deploying",
                 ],
               }),
-            ],
+              ],
+            }),
           }),
         ],
       }),
@@ -1246,7 +1263,7 @@ function hn({ wallet: a, record: i, save: n }) {
                               e.jsx("input", {
                                 value: k.name,
                                 maxLength: 64,
-                                disabled: E,
+                                disabled: E || !compilerVersion,
                                 placeholder: "Optional for a single contract",
                                 onChange: (l) =>
                                   oa({ ...k, name: l.target.value.trim() }),
@@ -1264,7 +1281,7 @@ function hn({ wallet: a, record: i, save: n }) {
                                 autoCapitalize: "off",
                                 maxLength: 32e3,
                                 value: k.source,
-                                disabled: E,
+                                disabled: E || !compilerVersion,
                                 onChange: (l) =>
                                   oa({ ...k, source: l.target.value }),
                               }),
@@ -1456,7 +1473,7 @@ function hn({ wallet: a, record: i, save: n }) {
                   e.jsx("button", {
                     type: "button",
                     className: "btn ghost",
-                    disabled: !k.source.trim() || E,
+                    disabled: !compilerVersion || !k.source.trim() || E,
                     onClick: () =>
                       qa(
                         (l) => (

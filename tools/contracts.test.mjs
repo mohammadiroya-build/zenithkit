@@ -35,6 +35,36 @@ test("worker forwards the unchanged original request in one model call", async (
   assert.deepEqual(await res.json(), { source: validSource });
 });
 
+for (const compilerVersion of ["0.8.20", "0.8.24"]) {
+  test(`worker requests the selected Solidity ${compilerVersion} for drafting and repair`, async () => {
+    const source = validSource.replace("0.8.20", compilerVersion);
+    const prompt = "Store a single number";
+    for (const repair of [false, true]) {
+      const diagnostic = "ParserError: example";
+      const body = { prompt, compilerVersion, ...(repair ? { source, diagnostic } : {}) };
+      const response = await worker.fetch(post(body), env(async (_, input) => {
+        assert.ok(input.messages[0].content.includes(`pragma solidity ${compilerVersion};`));
+        assert.deepEqual(JSON.parse(input.messages[1].content), {
+          request: prompt,
+          ...(repair ? { previous_source: source, compiler_error: diagnostic } : {}),
+        });
+        return { response: source };
+      }));
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { source });
+    }
+  });
+}
+
+test("worker rejects an unsupported compiler or a draft for the wrong compiler", async () => {
+  assert.equal((await worker.fetch(post({ prompt: "Store a number", compilerVersion: "0.8.99" }), {})).status, 400);
+  const response = await worker.fetch(
+    post({ prompt: "Store a number", compilerVersion: "0.8.24" }),
+    env(async () => ({ response: validSource })),
+  );
+  assert.equal(response.status, 502);
+});
+
 test("worker routes, strips malformed completions, and enforces rate limits", async () => {
   const configured = env(async () => ({ choices: [{ finish_reason: "length", message: { content: validSource } }] }));
   assert.equal((await worker.fetch(new Request(path), configured)).status, 405);

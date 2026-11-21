@@ -3,11 +3,12 @@ import { aj as React, ak as jsx } from "./index-BOd0iaB5.js";
 const privateKeyPattern = /^(?:0x)?[\da-f]{64}$/i;
 const privateKeyWarning = "This looks like a private key, paste your Solidity source instead";
 
-export function SoliditySourceInput({ value, change, disabled }) {
+export function SoliditySourceInput({ value, change, disabled, locked }) {
+  const blocked = disabled || locked;
   const [message, describe] = React.useState("");
   const area = React.useRef(null);
-  const latest = React.useRef({ value, disabled });
-  latest.current = { value, disabled };
+  const latest = React.useRef({ value, disabled: blocked });
+  latest.current = { value, disabled: blocked };
   const pasteId = React.useId();
 
   function focusForPaste() {
@@ -19,6 +20,7 @@ export function SoliditySourceInput({ value, change, disabled }) {
   }
 
   async function paste() {
+    if (latest.current.disabled) return;
     const original = latest.current.value;
     describe("");
     try {
@@ -50,7 +52,7 @@ export function SoliditySourceInput({ value, change, disabled }) {
         children: jsx.jsx("button", {
           className: "btn ghost",
           type: "button",
-          disabled,
+          disabled: blocked,
           onClick: paste,
           title: "Replace the editor contents with code from your clipboard",
           children: "Paste code",
@@ -59,7 +61,9 @@ export function SoliditySourceInput({ value, change, disabled }) {
       jsx.jsx("p", {
         id: pasteId,
         className: "small muted",
-        children: "Right-click inside the editor or touch and hold on mobile, then choose Paste",
+        children: locked
+          ? "Select a Solidity compiler version to unlock the editor and paste code"
+          : "Right-click inside the editor or touch and hold on mobile, then choose Paste",
       }),
       jsx.jsx("div", {
         className: "contract-editor-surface",
@@ -73,8 +77,13 @@ export function SoliditySourceInput({ value, change, disabled }) {
           autoCapitalize: "off",
           autoCorrect: "off",
           autoComplete: "off",
+          disabled: locked,
           value,
           onPaste: event => {
+            if (blocked) {
+              event.preventDefault();
+              return;
+            }
             const text = event.clipboardData?.getData("text/plain") ?? "";
             if (privateKeyPattern.test(text.trim())) {
               event.preventDefault();
@@ -82,10 +91,11 @@ export function SoliditySourceInput({ value, change, disabled }) {
             }
           },
           onChange: event => {
+            if (blocked) return;
             describe("");
             change(event.target.value);
           },
-          readOnly: disabled,
+          readOnly: blocked,
         }),
       }),
       message && jsx.jsx("p", { className: "small muted", role: "status", children: message }),
