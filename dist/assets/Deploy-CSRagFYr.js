@@ -3,10 +3,8 @@ const __vite__mapDeps = (
   m = __vite__mapDeps,
   d = m.f ||
     (m.f = [
-      "./Editor-D9T4MNE3.js",
       "./index-BOd0iaB5.js",
       "./index-CERNRboz.css",
-      "./Editor-BaEgnEXM.css",
       "./Assistant-Bs_UKF0F.js",
       "./_esm-DK87UKUj.js",
       "./fallback-Du5wG3W-.js",
@@ -1158,17 +1156,10 @@ function vs({ files: t, change: r, reading: n, setReading: s, disabled: o }) {
     ],
   });
 }
-const ks = d.lazy(() =>
-    Oe(
-      () => import("./Editor-D9T4MNE3.js").then((t) => t.E),
-      __vite__mapDeps([0, 1, 2, 3]),
-      import.meta.url,
-    ),
-  ),
-  Ns = d.lazy(() =>
+const Ns = d.lazy(() =>
     Oe(
       () => import("./Assistant-Bs_UKF0F.js"),
-      __vite__mapDeps([4, 1, 2]),
+      __vite__mapDeps([2, 0, 1]),
       import.meta.url,
     ),
   ),
@@ -1250,7 +1241,7 @@ async function Ts(t, r) {
   }
   return t === "Greeting" ? [r[0]] : [];
 }
-function zs({ record: t, theme: r }) {
+function zs({ record: t }) {
   const n = it(),
     [s, o] = d.useState("templates"),
     [i, a] = d.useState(!1),
@@ -1429,7 +1420,7 @@ function zs({ record: t, theme: r }) {
                 await import("./_esm-DK87UKUj.js");
               return { encodeAbiParameters: G };
             },
-            __vite__mapDeps([5, 1, 2, 6, 7, 8, 9]),
+            __vite__mapDeps([3, 0, 1, 4, 5, 6, 7]),
             import.meta.url,
           ),
           fe = he((ie == null ? void 0 : ie.inputs) ?? [], V);
@@ -1666,19 +1657,6 @@ The implementation address was saved, the proxy did not finalize`
                         value: u,
                         change: N,
                         disabled: !!k,
-                        renderHighlighted: globalThis.origin === "null" ? null :
-                          () => e.jsx(d.Suspense, {
-                                fallback: e.jsx("div", {
-                                  className: "empty",
-                                  children: "Loading Monaco Editor…",
-                                }),
-                                children: e.jsx(ks, {
-                                  value: u,
-                                  change: N,
-                                  theme: r,
-                                  disabled: !!k,
-                                }),
-                              }),
                       }),
                       e.jsx("p", {
                         className: "small muted",

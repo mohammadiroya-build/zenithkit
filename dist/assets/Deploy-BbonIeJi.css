@@ -143,6 +143,9 @@
   font-size: var(--text-sm);
   line-height: 1.5;
   tab-size: 4;
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
   resize: vertical;
   outline: none;
 }
