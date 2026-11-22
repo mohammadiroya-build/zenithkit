@@ -1,5 +1,6 @@
 const current = "5.0.2";
 const legacy = "4.9.6";
+export const openZeppelinReleases = [current, legacy];
 const packages = ["@openzeppelin/contracts", "@openzeppelin/contracts-upgradeable"];
 const safeMath = "utils/math/SafeMath.sol";
 const owns = (object, key) => Object.hasOwn(object, key);
@@ -99,7 +100,8 @@ function installedRoots(units) {
   return roots;
 }
 
-export async function collectCustomImports(sources, remappings, loadBundle) {
+export async function collectCustomImports(sources, remappings, loadBundle, release = "") {
+  if (release && !openZeppelinReleases.includes(release)) throw new Error("Select a supported OpenZeppelin version");
   if (remappings !== undefined && (!Array.isArray(remappings) ||
       remappings.some(rule => typeof rule !== "string" || !parseRule(rule)))) return remappings;
   const explicit = (remappings ?? []).map(parseRule);
@@ -128,8 +130,8 @@ export async function collectCustomImports(sources, remappings, loadBundle) {
     if (!bundled.has(version)) bundled.set(version, await loadBundle(version));
     return bundled.get(version);
   }
-  let preferred = current;
-  if (requests.some(pkg => !pkg.version)) {
+  let preferred = release || current;
+  if (!release && requests.some(pkg => !pkg.version)) {
     const modern = await bundle(current);
     const undecided = requests.filter(pkg => !pkg.version);
     const missing = undecided.filter(pkg => !owns(modern, pkg.key));
@@ -166,7 +168,7 @@ export async function collectCustomImports(sources, remappings, loadBundle) {
     if (version === preferred) continue;
     addRule(packageRoot(packages[1], version), `${packages[0]}/`, packageRoot(packages[0], version), false);
   }
-  if (preferred === current && bundled.has(legacy)) {
+  if (!release && preferred === current && bundled.has(legacy)) {
     if (requests.some(pkg => !pkg.version && pkg.name === packages[0] && pkg.file === safeMath)) {
       for (const prefix of aliasesFor(packages[0], "")) {
         addRule("", prefix + safeMath, packageRoot(packages[0], legacy) + safeMath);
@@ -211,7 +213,7 @@ export async function collectCustomImports(sources, remappings, loadBundle) {
     }
     if (!canFill.get(group)) return undefined;
     if (owns(files, pkg.key)) return { content: files[pkg.key] };
-    if (!pkg.version && version === current && pkg.name === packages[0] && pkg.file === safeMath && bundled.has(legacy)) {
+    if (!release && !pkg.version && version === current && pkg.name === packages[0] && pkg.file === safeMath && bundled.has(legacy)) {
       return { content: bundled.get(legacy)[pkg.key] };
     }
     return undefined;

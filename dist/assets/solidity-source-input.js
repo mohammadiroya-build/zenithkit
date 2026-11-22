@@ -3,7 +3,7 @@ import { aj as React, ak as jsx } from "./index-BOd0iaB5.js";
 const privateKeyPattern = /^(?:0x)?[\da-f]{64}$/i;
 const privateKeyWarning = "This looks like a private key, paste your Solidity source instead";
 
-export function SoliditySourceInput({ value, change, disabled, locked }) {
+export function SoliditySourceInput({ value, change, disabled, locked, ownershipActive, ownershipSource, toggleOwnership }) {
   const blocked = disabled || locked;
   const [message, describe] = React.useState("");
   const area = React.useRef(null);
@@ -49,14 +49,23 @@ export function SoliditySourceInput({ value, change, disabled, locked }) {
     children: [
       jsx.jsx("div", {
         className: "action-row contract-editor-actions",
-        children: jsx.jsx("button", {
+        children: [jsx.jsx("button", {
           className: "btn ghost",
           type: "button",
           disabled: blocked,
           onClick: paste,
           title: "Replace the editor contents with code from your clipboard",
           children: "Paste code",
-        }),
+        }), jsx.jsx("button", {
+          className: "btn ghost",
+          type: "button",
+          disabled: blocked,
+          onClick: () => {
+            describe("");
+            toggleOwnership();
+          },
+          children: ownershipActive ? "Restore previous draft" : "Use ownership example",
+        })],
       }),
       jsx.jsx("p", {
         id: pasteId,
@@ -97,6 +106,13 @@ export function SoliditySourceInput({ value, change, disabled, locked }) {
           },
           readOnly: blocked,
         }),
+      }),
+      ownershipActive && jsx.jsx("p", {
+        className: "small muted",
+        role: "status",
+        children: ownershipSource
+          ? "No imports required. Use direct deployment; only the deployer can change the value."
+          : "Restore previous draft to return to the source and settings from before the example.",
       }),
       message && jsx.jsx("p", { className: "small muted", role: "status", children: message }),
     ],

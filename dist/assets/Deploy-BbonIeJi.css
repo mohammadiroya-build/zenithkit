@@ -120,6 +120,24 @@
 .contract-editor-actions .btn {
   min-height: 44px;
 }
+.custom-compiler-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+}
+.custom-compiler-options .compiler-version-field,
+.custom-compiler-options select {
+  width: 100%;
+  min-width: 0;
+}
+.custom-compiler-form > section {
+  min-width: 0;
+}
+.custom-compiler-form .pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .contract-editor-surface {
   min-width: 0;
   border-radius: var(--radius-md);
@@ -155,6 +173,21 @@
   }
 }
 @media (max-width: 540px) {
+  .custom-compiler-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .custom-compiler-form .action-row .btn,
+  .custom-compiler-form select {
+    min-height: 44px;
+  }
+  .custom-compiler-form .action-row .btn {
+    min-width: 0;
+    white-space: normal;
+  }
+  .custom-compiler-form .contract-editor-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .contract-workspace .field input,
   .contract-workspace .field textarea,
   .contract-workspace .field select,
@@ -194,5 +227,10 @@
   .assistant .check input {
     margin-top: var(--space-1);
     flex: none;
+  }
+}
+@media (max-width: 360px) {
+  .custom-compiler-form .contract-editor-actions {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

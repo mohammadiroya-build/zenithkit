@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { compileCustomSolidity, customCompilerTimeout } from "../dist/assets/custom-compiler.js";
+import { ownershipExample } from "../dist/assets/custom-examples.js";
 import { collectCustomImports, solidityImports } from "../dist/assets/custom-imports.js";
 import { compileSolidity } from "../dist/assets/solidity-compile.js";
 import { getCompilerBuild } from "../dist/assets/compiler-versions.js";
@@ -92,7 +93,7 @@ for (const version of ["0.8.24", "0.8.28"]) {
     const run = factory(version);
     let passes = [];
     let loads = [];
-    const compile = (source, name = "", uploads = []) => {
+    const compile = (source, name = "", uploads = [], release = "") => {
       passes = [];
       loads = [];
       return compileSolidity(source, name, {}, input => {
@@ -101,7 +102,7 @@ for (const version of ["0.8.24", "0.8.28"]) {
       }, uploads, getCompilerBuild(version), (sources, rules) => collectCustomImports(sources, rules, release => {
         loads.push(release);
         return bundle[release];
-      }));
+      }, release));
     };
 
     await t.test("legacy guard, SafeMath and Ownable arrive before the first compiler call", async () => {
@@ -206,6 +207,47 @@ for (const version of ["0.8.24", "0.8.28"]) {
       assert.deepEqual(loads, [modern]);
       assert.equal((await compile(solidity(`contract Fresh { string constant a = 'import "decoy";'; }`))).symbol, "Fresh");
       assert.deepEqual(loads, []);
+    });
+
+    await t.test("the ownership example is deployable without loading a library in any release mode", async () => {
+      for (const selected of ["", legacy, modern]) {
+        const artifact = await compile(ownershipExample, "", [], selected);
+        assert.equal(artifact.symbol, "Custom");
+        assert.deepEqual(Object.keys(artifact.input.sources), ["Custom.sol"]);
+        assert.equal(artifact.input.sources["Custom.sol"].content, ownershipExample);
+        assert.deepEqual(artifact.warnings, []);
+        assert.deepEqual(loads, []);
+        assert.equal(passes.length, 1);
+        assert.ok(artifact.abi.some(item => item.type === "error" && item.name === "NotOwner"));
+        assert.ok(artifact.abi.some(item => item.type === "function" && item.name === "owner"));
+      }
+    });
+
+    await t.test("version choice and Ownable diagnostics follow the actual dependency without changing source", async () => {
+      const ownable = solidity(`import {Ownable} from "${namespace}access/Ownable.sol";
+        contract Example is Ownable { constructor() Ownable(msg.sender) {} }`);
+      const oldConstructor = ownable.replace(" Ownable(msg.sender)", "");
+      await assert.rejects(compile(ownable, "", [], legacy), /expected 0[\s\S]*resolved OpenZeppelin 4 Ownable/);
+      assert.deepEqual(loads, [legacy]);
+      assert.equal(passes[0].sources["Custom.sol"].content, ownable);
+      assert.equal((await compile(oldConstructor, "", [], legacy)).symbol, "Example");
+      await assert.rejects(compile(oldConstructor, "", [], modern), /No arguments passed[\s\S]*OpenZeppelin 5 Ownable needs an initial owner/);
+      const pinned = ownable.replace(namespace, "@openzeppelin/contracts@5.0.2/");
+      assert.equal((await compile(pinned, "", [], legacy)).symbol, "Example");
+      assert.deepEqual(loads, [modern]);
+      const remapped = JSON.stringify({
+        language: "Solidity",
+        sources: { "Custom.sol": { content: ownable } },
+        settings: { remappings: ["@openzeppelin/contracts/=node_modules/@openzeppelin/contracts@5.0.2/"] },
+      });
+      assert.equal((await compile(remapped, "", [], legacy)).symbol, "Example");
+      assert.deepEqual(loads, [modern]);
+      const mixed = ownable.replace("contract Example", `import {ReentrancyGuard} from "${namespace}${guard}";\ncontract Example`)
+        .replace("is Ownable", "is Ownable, ReentrancyGuard");
+      await assert.rejects(compile(mixed), /expected 0[\s\S]*utils\/ReentrancyGuard\.sol/);
+      assert.equal((await compile(mixed.replace(guard, modernGuard), "", [], modern)).symbol, "Example");
+      await assert.rejects(compile(mixed, "", [], modern), /security\/ReentrancyGuard\.sol" not found/);
+      assert.deepEqual(loads, [modern]);
     });
   });
 }

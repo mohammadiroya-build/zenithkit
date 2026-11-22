@@ -30,7 +30,30 @@ function uploadPath(path) {
   return name;
 }
 
-function diagnostics(errors, sources) {
+const ownablePath = /(?:^|\/)@openzeppelin\/contracts(?:@[^/]+)?\/access\/Ownable\.sol$/;
+const modernOwnable = /constructor\s*\(\s*address\s+initialOwner\s*\)/;
+const legacyOwnable = /constructor\s*\(\s*\)\s*\{[^}]*_transferOwnership\(_msgSender\(\)\)/;
+
+function ownershipHint(error, sources, token, source) {
+  if (error.errorCode === "3415" && error.secondarySourceLocations?.some(({ file }) =>
+    ownablePath.test(file) && modernOwnable.test(sources[file]?.content ?? ""))) {
+    return "OpenZeppelin 5 Ownable needs an initial owner. Pass an address to its base constructor, for example Ownable(msg.sender), or use the built-in Ownership example without imports.";
+  }
+  if (error.errorCode !== "2973" || !/^\s*Ownable\s*\(/.test(token) ||
+      !/\bimport\s+(?:(?:\{[^}]*\}|\*)[\s\S]*?\sfrom\s+)?["'][^"'\r\n]*@openzeppelin\/contracts(?:@[^/"']+)?\/access\/Ownable\.sol["']/.test(source)) return "";
+  const bases = Object.entries(sources).filter(([path]) => ownablePath.test(path));
+  if (bases.length !== 1) return "";
+  const content = bases[0][1].content;
+  if (/expected 0\b/.test(error.message) && legacyOwnable.test(content)) {
+    return "This contract resolved OpenZeppelin 4 Ownable, which takes no constructor argument. Remove the base argument for v4, or use OpenZeppelin 5 with matching import paths (for example utils/ReentrancyGuard.sol). The Ownership example needs no imports.";
+  }
+  if (/expected 1\b/.test(error.message) && modernOwnable.test(content)) {
+    return "This contract resolved OpenZeppelin 5 Ownable. Pass its initial owner address, for example Ownable(msg.sender), or use the built-in Ownership example without imports.";
+  }
+  return "";
+}
+
+function diagnostics(errors, sources, custom) {
   return errors.map(error => {
     const message = error.formattedMessage ?? error.message;
     const location = error.sourceLocation;
@@ -40,6 +63,10 @@ function diagnostics(errors, sources) {
     const before = decoder.decode(bytes.subarray(0, location.start));
     const token = decoder.decode(bytes.subarray(location.start, location.end));
     const after = decoder.decode(bytes.subarray(location.end));
+    if (custom) {
+      const hint = ownershipHint(error, sources, token, content);
+      if (hint) return `${message}\n${hint}`;
+    }
     if (error.errorCode === "2314" && token === "string" && /\busing\s*$/.test(before) && /^\s+for\b/.test(after)) {
       return `${message}\nThe left side of \`using ... for ...\` needs a library name or a list of functions. For OpenZeppelin number-to-string conversion, import {Strings} from "@openzeppelin/contracts/utils/Strings.sol"; then write \`using Strings for uint256;\`.`;
     }
@@ -168,7 +195,7 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
           "Supply the exact imported file, a matching remapping, or a supported OpenZeppelin release.",
         ),
       }) : errors;
-      throw new Error(diagnostics(reported, sources));
+      throw new Error(diagnostics(reported, sources, !!prepareImports));
     }
     const [unit, name] = selectContract(output, candidates, requested);
     const contract = output.contracts[unit][name];
