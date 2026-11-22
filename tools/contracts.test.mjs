@@ -32,6 +32,7 @@ test("worker forwards the unchanged original request in one model call", async (
     assert.match(input.messages[0].content, /No Markdown, prose, NatSpec or nonessential comments/);
     assert.match(input.messages[0].content, /do not omit requested features/);
     assert.match(input.messages[0].content, /Never use reserved Solidity words as identifiers/);
+    assert.match(input.messages[0].content, /Use normal constructors by default/);
     assert.deepEqual(JSON.parse(input.messages[1].content), { request: original, language_hint: "es" });
     return { choices: [{ message: { content: `\`\`\`solidity\n${validSource}\`\`\`` }, finish_reason: "stop" }] };
   }));
