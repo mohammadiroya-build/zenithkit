@@ -52,6 +52,8 @@ test("worker forwards the unchanged original request in one model call", async (
     assert.match(input.messages[0].content, /do not omit requested features/);
     assert.match(input.messages[0].content, /Never use reserved Solidity words as identifiers/);
     assert.match(input.messages[0].content, /write numeric syntax with ASCII digits/);
+    assert.match(input.messages[0].content, /account that deployed it, not the constructor function/);
+    assert.match(input.messages[0].content, /Never emit a second draft or SPDX header/);
     assert.match(input.messages[0].content, /Use normal constructors by default/);
     assert.deepEqual(JSON.parse(input.messages[1].content), { request: original, language_hint: "es" });
     return { choices: [{ message: { content: `\`\`\`solidity\n${validSource}\`\`\`` }, finish_reason: "stop" }] };
