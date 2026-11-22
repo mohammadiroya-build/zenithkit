@@ -26,6 +26,16 @@ contract SvgMedal is ERC721 {
     }
 }`);
 const copiedSvg = svgSource.replace(/^ +/gm, spaces => "\u200f" + "\u00a0".repeat(spaces.length));
+const packedData = solidity(`
+import "@openzeppelin/contracts@5.0.2/utils/Base64.sol";
+contract PackedData {
+    function pack(uint256 id) external pure returns (string memory) {
+        bytes memory chunks = abi.encodePacked(
+            ${Array.from({ length: 25 }, (_, index) => `"${String(index).padStart(2, "0")}abc123"`).join(", ")}
+        );
+        return string(abi.encodePacked(id, Base64.encode(chunks)));
+    }
+}`);
 
 test("copy normalization leaves literals, their escapes, and comments untouched", () => {
   const source = '/*\n\u200f\u00a0 a comment\n*/\n' +
@@ -47,6 +57,51 @@ function workerFor(version) {
     return response;
   };
 }
+
+test("retries a real Solidity 0.8.24 stack-depth failure without changing the source or dropping optimizer settings", async () => {
+  const run = workerFor("0.8.24");
+  const build = getCompilerBuild("0.8.24");
+  const attempts = [];
+  const compile = source => compileSolidity(source, "PackedData", bundled, input => {
+    attempts.push(input.settings.viaIR);
+    return run(input);
+  }, [], build);
+  const artifact = await compile(packedData);
+  assert.equal(attempts.at(-1), true);
+  assert.equal(attempts.filter(value => value === true).length, 1);
+  assert.ok(attempts.slice(0, -1).every(value => value === undefined));
+  assert.deepEqual(artifact.input.settings.optimizer, { runs: 200, enabled: true });
+  assert.equal(artifact.input.settings.evmVersion, "paris");
+  assert.equal(artifact.input.settings.viaIR, true);
+  assert.equal(artifact.metadata.settings.viaIR, true);
+  assert.equal(artifact.input.sources["Custom.sol"].content, packedData);
+  assert.ok(artifact.input.sources["@openzeppelin/contracts/utils/Base64.sol"]);
+  assert.ok(artifact.abi.some(item => item.name === "pack"));
+  assert.match(artifact.bytecode, /^0x[a-f\d]+$/i);
+
+  attempts.length = 0;
+  const explicitSettings = JSON.stringify({
+    language: "Solidity",
+    sources: { "Custom.sol": { content: packedData } },
+    settings: { viaIR: false },
+  });
+  await assert.rejects(compile(explicitSettings), /Stack too deep/);
+  assert.ok(attempts.length > 0 && attempts.every(value => value === false));
+});
+
+test("a failed stack-depth retry stops, and syntax errors do not trigger a retry", async () => {
+  const build = getCompilerBuild("0.8.24");
+  const attempts = [];
+  const check = (type, message) => compileSolidity("contract Sample {}", "Sample", {}, input => {
+    attempts.push(input.settings.viaIR);
+    return { output: { errors: [{ severity: "error", type, message }] }, compilerVersion: build };
+  }, [], build);
+  await assert.rejects(check("CompilerError", "Stack too deep"), /Stack too deep/);
+  assert.deepEqual(attempts, [undefined, true]);
+  attempts.length = 0;
+  await assert.rejects(check("ParserError", "Expected a statement"), /Expected a statement/);
+  assert.deepEqual(attempts, [undefined]);
+});
 
 for (const version of ["0.8.24", "0.8.28"]) {
   test(`bundled Solidity ${version}: rejects the typo, compiles valid Strings and complex projects`, async t => {
@@ -72,6 +127,7 @@ for (const version of ["0.8.24", "0.8.28"]) {
       const pasted = await compile(fixedUsing);
       const uploaded = await compile(compilationSource(starter, uploads, starter), uploads);
       checkArtifact(pasted, "Custom", ["label"]);
+      assert.equal(pasted.input.settings.viaIR, undefined);
       assert.equal(uploaded.bytecode, pasted.bytecode);
       assert.equal(uploaded.input.sources["Custom.sol"].content, fixedUsing);
     });

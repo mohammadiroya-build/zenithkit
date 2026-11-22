@@ -116,7 +116,7 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
   if (!requested) {
     for (const unit of candidates) outputSelection[unit] = { "": ["ast"] };
   }
-  const input = {
+  let input = {
     language: "Solidity", sources, settings: {
       ...settings, evmVersion: "paris", optimizer: { runs: 200, ...settings.optimizer, enabled: true },
       outputSelection,
@@ -140,6 +140,11 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
       added = true;
     }
     if (added) continue;
+    if (input.settings.viaIR === undefined && errors.length && errors.every(error =>
+      error.type === "CompilerError" && /\bStack too deep\b/.test(error.message ?? error.formattedMessage ?? ""))) {
+      input = { ...input, settings: { ...input.settings, viaIR: true } };
+      continue;
+    }
     if (errors.length) throw new Error(diagnostics(errors, sources));
     const [unit, name] = selectContract(output, candidates, requested);
     const contract = output.contracts[unit][name];
