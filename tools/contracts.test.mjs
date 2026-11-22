@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compareRuntimeBytecode, savedVerificationRecord } from "../dist/assets/contract-bytecode.js";
-import { deploymentFees, feePaid, formatZthFee } from "../dist/assets/contract-fees.js";
+import { deploymentFees, feePaid, formatZthFee, submitWithDeploymentFees } from "../dist/assets/contract-fees.js";
 import { matchStorageRequest } from "../dist/assets/request-storage.js";
 import { deploymentValue, initializerFor, readAssistantDeployment } from "../dist/assets/assistant-deployment-plan.js";
 import { checkAbort, requestTimeout } from "../dist/assets/request-timeout.js";
@@ -188,6 +188,116 @@ test("gas quote falls back to RPC legacy price or wallet without inventing fees"
   assert.deepEqual(await deploymentFees(client, {}), { gas: 22_050n });
   client.estimateGas = async () => { throw new Error("Deployment would revert"); };
   await assert.rejects(deploymentFees(client, {}), /would revert/);
+});
+
+function lowerFeeFixture({ mode = "success" } = {}) {
+  const hex = n => `0x${n.toString(16)}`;
+  const now = Math.floor(Date.now() / 1000);
+  const historic = [104, 108, 112];
+  const live = [181, 189, 198];
+  const estimated = [];
+  const calls = [];
+  const client = {
+    estimateGas: async req => {
+      estimated.push(req);
+      if (req.maxFeePerGas && mode === "execution-error") throw new Error("Constructor reverted at this gas price");
+      return req.maxFeePerGas ? 510_000n : 500_000n;
+    },
+    request: async ({ method, params = [] }) => {
+      calls.push([method, params]);
+      if (method === "eth_feeHistory") {
+        if (mode === "short-history" && params[0] === "0x400") throw new Error("block count too high");
+        if (params[0] === "0xc") return {
+          baseFeePerGas: ["0x7", "0x7"], reward: Array.from({ length: 12 }, () => ["0x64"]),
+        };
+        return {
+          oldestBlock: hex(100),
+          baseFeePerGas: ["0x7", "0x7"],
+          reward: Array.from({ length: 100 }, (_, i) => {
+            const n = 100 + i;
+            if (historic.includes(n)) return ["0x12", "0x12"];
+            if (live.includes(n) && !(mode === "stale-market" && n === 198)) return ["0xa", "0xa"];
+            return ["0x1f4", "0x1f4"];
+          }),
+          gasUsedRatio: Array.from({ length: 100 }, (_, i) => {
+            if (historic.includes(100 + i)) return 0.02;
+            return i === 99 && mode === "busy" ? 0.85 : 0.001;
+          }),
+        };
+      }
+      if (method === "eth_maxPriorityFeePerGas") return "0x1f4";
+      if (method === "eth_gasPrice") return "0x1fb";
+      if (method === "eth_getBlockByNumber") {
+        const [tag] = params;
+        if (tag === "latest") return { number: hex(199), gasLimit: hex(30_000_000), timestamp: hex(now) };
+        return {
+          baseFeePerGas: "0x7",
+          timestamp: hex(now - (mode === "old-receipts" ? 12_000 : 3600)),
+          hash: `block:${tag}`,
+          transactions: [{
+            hash: tag, to: mode === "transfers" ? "0xabcdef" : null,
+            gas: hex(500_000), maxPriorityFeePerGas: "0x12", maxFeePerGas: "0x19",
+          }],
+        };
+      }
+      if (method === "eth_getTransactionReceipt") {
+        const [tag] = params;
+        return {
+          status: mode === "reverts" ? "0x0" : "0x1",
+          contractAddress: "0xabcdef",
+          blockHash: mode === "mismatch" ? "wrong block" : `block:${tag}`,
+          gasUsed: hex(325_000), effectiveGasPrice: "0x19",
+        };
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    },
+  };
+  return { client, estimated, calls };
+}
+
+test("deployment fees use the lowest corroborated tier and re-estimate the constructor with explicit fee fields", async () => {
+  const { client, estimated, calls } = lowerFeeFixture();
+  const request = { data: "0x1234", value: 9n };
+  assert.deepEqual(await deploymentFees(client, request), {
+    gas: 535_500n, maxPriorityFeePerGas: 18n, maxFeePerGas: 32n,
+  });
+  assert.deepEqual(estimated, [request, { ...request, maxPriorityFeePerGas: 18n, maxFeePerGas: 32n }]);
+  assert.equal(calls.filter(([method]) => method === "eth_getTransactionReceipt").length, 3);
+});
+
+test("stale and busy conditions, unconfirmed creations, and a constructor fee check failure use the standard quote", async () => {
+  for (const mode of ["old-receipts", "busy", "stale-market", "transfers", "reverts", "mismatch", "execution-error"]) {
+    const { client } = lowerFeeFixture({ mode });
+    assert.deepEqual(await deploymentFees(client, {}), {
+      gas: 525_000n, maxPriorityFeePerGas: 500n, maxFeePerGas: 514n,
+    }, mode);
+  }
+});
+
+test("RPCs with a shorter fee history limit keep the original EIP-1559 quote", async () => {
+  const { client, calls } = lowerFeeFixture({ mode: "short-history" });
+  assert.deepEqual(await deploymentFees(client, {}), {
+    gas: 525_000n, maxPriorityFeePerGas: 100n, maxFeePerGas: 114n,
+  });
+  assert.deepEqual(calls.filter(([method]) => method === "eth_feeHistory").map(([, params]) => params[0]), ["0x400", "0xc"]);
+});
+
+test("a price rejection switches only a later manual request to standard fees and never submits twice", async () => {
+  const { client } = lowerFeeFixture();
+  const lower = await deploymentFees(client, {});
+  assert.equal(lower.maxPriorityFeePerGas, 18n);
+  for (const issue of ["replacement transaction underpriced", "user rejected the request", "transport timed out"]) {
+    const original = new Error(issue);
+    await assert.rejects(submitWithDeploymentFees(lower, async () => { throw original; }), err => err === original);
+    assert.equal((await deploymentFees(client, {})).maxPriorityFeePerGas, 18n);
+  }
+  let submissions = 0;
+  await assert.rejects(submitWithDeploymentFees(lower, async () => {
+    submissions++;
+    throw Object.assign(new Error("Provider error"), { info: { error: { message: "transaction underpriced" } } });
+  }), /The next attempt uses the standard quote/);
+  assert.equal(submissions, 1);
+  assert.equal((await deploymentFees(client, {})).maxPriorityFeePerGas, 500n);
 });
 
 test("runtime comparison distinguishes on-chain match and mismatches", () => {

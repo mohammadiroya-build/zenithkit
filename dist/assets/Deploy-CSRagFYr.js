@@ -57,7 +57,7 @@ import { abortReason, checkAbort, requestTimeout } from "./request-timeout.js";
 import { importRemappings, solidityImportResolver } from "./solidity-imports.js";
 import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { getCompilerBuild } from "./compiler-versions.js";
-import { deploymentFees, feePaid, formatZthFee } from "./contract-fees.js";
+import { deploymentFees, feePaid, formatZthFee, submitWithDeploymentFees } from "./contract-fees.js";
 import { compareRuntimeBytecode, metadataTail, savedVerificationRecord } from "./contract-bytecode.js";
 /**
  * @license lucide-react v0.548.0 - ISC
@@ -627,12 +627,12 @@ async function Qe(t, r, n, s, o, i = 0n) {
   } catch (u) {
     throw new Error(`Deployment preflight failed for ${s}: ${R(u)}`);
   }
-  const m = await t.deployContract({
+  const m = await submitWithDeploymentFees(fees, () => t.deployContract({
     ...x,
     ...fees,
     chain: Pe,
     ...(i > 0n ? { value: i } : {}),
-  });
+  }));
   o(s, m, "Pending");
   try {
     const u = await at(m);

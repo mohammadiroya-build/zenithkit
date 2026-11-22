@@ -1,6 +1,6 @@
 import { a as C, b as c, p as E, e as T } from "./index-BOd0iaB5.js";
 import { g as u, B as v, C as A } from "./provider-browser-LBmMibJ8.js";
-import { deploymentFees, feePaid } from "./contract-fees.js";
+import { deploymentFees, feePaid, submitWithDeploymentFees } from "./contract-fees.js";
 async function D(a, t, o, r, n, expectedAccount) {
   var p;
   const i = await a.ensureWallet(),
@@ -27,12 +27,12 @@ async function D(a, t, o, r, n, expectedAccount) {
   }
   (await h(), n());
   const { gas, ...fees } = d;
-  const f = await w.sendUncheckedTransaction({
+  const f = await submitWithDeploymentFees(d, () => w.sendUncheckedTransaction({
     ...m,
     ...fees,
     chainId: c.id,
     gasLimit: gas,
-  });
+  }));
   if (!/^0x[\da-f]{64}$/i.test(f))
     throw new Error("The wallet did not return a transaction hash");
   return { hash: f, account: s, encoded: g, contract: t };
