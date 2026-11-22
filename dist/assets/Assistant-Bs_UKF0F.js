@@ -994,16 +994,10 @@ function hn({ wallet: a, record: i, save: n }) {
         children: [
           e.jsxs(ua, {
             title: "Contract Assistant",
-            label: e.jsxs("div", {
-              className: "assistant-heading-actions",
-              children: [
-                e.jsx("span", { className: "badge neutral", children: "No model download" }),
-                e.jsx(ContractHelpButton, {
-                  label: "Contract Assistant help",
-                  buttonRef: helpButton,
-                  open: () => setHelpOpen(true),
-                }),
-              ],
+            label: e.jsx(ContractHelpButton, {
+              label: "Contract Assistant help",
+              buttonRef: helpButton,
+              open: () => setHelpOpen(true),
             }),
             children: [
               e.jsx("p", {

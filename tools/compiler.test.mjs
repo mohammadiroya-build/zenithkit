@@ -6,6 +6,7 @@ import { runInNewContext } from "node:vm";
 import { compilationSource, compileSolidity, normalizeSolidityIndentation } from "../dist/assets/solidity-compile.js";
 import { getCompilerBuild } from "../dist/assets/compiler-versions.js";
 import { fixedUsing, invalidType, invalidUsing, nft, solidity, upgradeable, uploadedProject } from "./compiler-fixtures.mjs";
+import { encodeDraftLiterals } from "../workers/contracts.mjs";
 
 const require = createRequire(import.meta.url);
 const compilerRoot = new URL("../dist/compiler/", import.meta.url);
@@ -130,6 +131,21 @@ for (const version of ["0.8.24", "0.8.28"]) {
       assert.equal(pasted.input.settings.viaIR, undefined);
       assert.equal(uploaded.bytecode, pasted.bytecode);
       assert.equal(uploaded.input.sources["Custom.sol"].content, fixedUsing);
+    });
+    await t.test("compiles escaped multilingual literals to the same runtime as valid Unicode literals", async () => {
+      const phrase = "سلام دنیا 😀";
+      const source = solidity(`contract Text {
+        function message() external pure returns (string memory) { return "${phrase}"; }
+        function joined() external pure returns (string memory) { return "Hello, " "${phrase}"; }
+      }`);
+      const reference = source.replace(`"${phrase}"`, `unicode"${phrase}"`)
+        .replace(`"Hello, " "${phrase}"`, `unicode"Hello, ${phrase}"`);
+      await assert.rejects(compile(source), /ParserError: Invalid character in string/);
+      const fixed = await compile(encodeDraftLiterals(source));
+      const expected = await compile(reference);
+      checkArtifact(fixed, "Text", ["message", "joined"]);
+      const withoutMetadata = bytecode => bytecode.slice(0, -2 * (parseInt(bytecode.slice(-4), 16) + 2));
+      assert.equal(withoutMetadata(fixed.deployedBytecode), withoutMetadata(expected.deployedBytecode));
     });
     await t.test("compiles the repaired on-chain SVG NFT with chat indentation and retains the compiled source", async () => {
       const raw = run({ language: "Solidity", sources: { "Custom.sol": { content: copiedSvg } } });
