@@ -29,6 +29,8 @@ test("worker forwards the unchanged original request in one model call", async (
     calls++;
     assert.equal(model, "@cf/google/gemma-4-26b-a4b-it");
     assert.equal(input.chat_template_kwargs.enable_thinking, false);
+    assert.match(input.messages[0].content, /No Markdown, prose, NatSpec or nonessential comments/);
+    assert.match(input.messages[0].content, /do not omit requested features/);
     assert.deepEqual(JSON.parse(input.messages[1].content), { request: original, language_hint: "es" });
     return { choices: [{ message: { content: `\`\`\`solidity\n${validSource}\`\`\`` }, finish_reason: "stop" }] };
   }));
