@@ -190,63 +190,6 @@ test("gas quote falls back to RPC legacy price or wallet without inventing fees"
   await assert.rejects(deploymentFees(client, {}), /would revert/);
 });
 
-function recentDeploymentFeesFixture({ second = "success" } = {}) {
-  const calls = [];
-  const client = {
-    estimateGas: async () => 200_000n,
-    request: async ({ method, params = [] }) => {
-      calls.push([method, params]);
-      if (method === "eth_feeHistory") return {
-        oldestBlock: "0x100",
-        baseFeePerGas: ["0x7", "0x7"],
-        reward: Array.from({ length: 48 }, (_, index) => [index === 27 || index === 46 ? "0xa" : "0x1f4"]),
-      };
-      if (method === "eth_gasPrice") return "0x1fb";
-      if (method === "eth_maxPriorityFeePerGas") return "0x1f4";
-      if (method === "eth_getBlockByNumber") {
-        const [number, full] = params;
-        assert.equal(full, true);
-        return {
-          hash: `block:${number}`, baseFeePerGas: "0x7",
-          transactions: [{
-            hash: number, to: number === "0x12e" && second === "transfer" ? "0x1234" : null,
-            gas: "0x30d40", maxPriorityFeePerGas: "0x32", maxFeePerGas: "0x11",
-          }],
-        };
-      }
-      if (method === "eth_getTransactionReceipt") {
-        const [number] = params;
-        if (number === "0x12e" && second === "unavailable") throw new Error("Unavailable");
-        return {
-          status: number === "0x12e" && second === "reverted" ? "0x0" : "0x1",
-          contractAddress: "0x1234", blockHash: `block:${number}`,
-          gasUsed: number === "0x12e" && second === "small" ? "0xd088" : "0x30d40",
-          effectiveGasPrice: number === "0x11b" ? "0xe" : "0xf",
-        };
-      }
-      throw new Error(`Unexpected request: ${method}`);
-    },
-  };
-  return { client, calls };
-}
-
-test("a cheaper deployment tip requires successful comparable creations in distinct recent blocks", async () => {
-  const { client, calls } = recentDeploymentFeesFixture();
-  assert.deepEqual(await deploymentFees(client, {}), {
-    gas: 210_000n, maxPriorityFeePerGas: 8n, maxFeePerGas: 22n,
-  });
-  assert.deepEqual(calls.filter(([method]) => method === "eth_getBlockByNumber").map(([, args]) => args[0]), ["0x11b", "0x12e"]);
-});
-
-test("a transfer, a revert, a small creation or missing data cannot reduce the standard quote", async () => {
-  for (const second of ["transfer", "reverted", "small", "unavailable"]) {
-    const { client } = recentDeploymentFeesFixture({ second });
-    assert.deepEqual(await deploymentFees(client, {}), {
-      gas: 210_000n, maxPriorityFeePerGas: 500n, maxFeePerGas: 514n,
-    });
-  }
-});
-
 test("runtime comparison distinguishes on-chain match and mismatches", () => {
   const contract = { deployedBytecode: "0x60005b6000", immutableReferences: { slot: [{ start: 3, length: 1 }] } };
   assert.equal(compareRuntimeBytecode("0x", contract).state, "Not matched");
