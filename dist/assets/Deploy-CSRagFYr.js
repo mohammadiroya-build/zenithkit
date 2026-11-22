@@ -55,6 +55,7 @@ import {
 import { SoliditySourceInput } from "./solidity-source-input.js";
 import { abortReason, checkAbort, requestTimeout } from "./request-timeout.js";
 import { compilationSource, compileSolidity, sourceLimits as K } from "./solidity-compile.js";
+import { compileCustomSolidity } from "./custom-compiler.js";
 import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { getCompilerBuild } from "./compiler-versions.js";
 import { deploymentFees, feePaid, formatZthFee, submitWithDeploymentFees } from "./contract-fees.js";
@@ -1136,7 +1137,7 @@ function zs({ record: t }) {
     const c = new AbortController(),
       f = setTimeout(async () => {
         try {
-          const C = await ps(W.source, W.name, W.imports, c.signal, W.version);
+          const C = await compileCustomSolidity(W.source, W.name, W.imports, c.signal, W.version, us);
           c.signal.aborted || Ve({ request: W, contract: C });
         } catch (C) {
           c.signal.aborted ||
