@@ -71,12 +71,15 @@ function selectContract(output, units, requested) {
   throw new Error(`Enter path:ContractName to select one contract:\n${options.join("\n")}${candidates.length > options.length ? "\n..." : ""}`);
 }
 
-export async function compileSolidity(source, requested, bundled, run, uploads, expectedBuild) {
+export async function compileSolidity(source, requested, bundled, run, uploads, expectedBuild, prepareImports) {
   const hasEditor = !!source.trim();
-  if ((!hasEditor && !uploads.length) || encoder.encode(source).length > sourceLimits.fileBytes) {
+  const isStandard = source.trimStart().startsWith("{");
+  const inputLimit = prepareImports && isStandard ? sourceLimits.totalBytes : sourceLimits.fileBytes;
+  if ((!hasEditor && !uploads.length) || encoder.encode(source).length > inputLimit) {
+    if (inputLimit > sourceLimits.fileBytes) throw new Error("Enter Solidity Standard JSON up to 5 MB");
     throw new Error("Enter Solidity source up to 500 KB or upload Solidity files");
   }
-  const standard = source.trimStart().startsWith("{") ? JSON.parse(source) : null;
+  const standard = isStandard ? JSON.parse(source) : null;
   if (standard && (standard.language !== "Solidity" || !isObject(standard.sources) ||
       !Object.keys(standard.sources).length || Object.values(standard.sources).some(file => !isObject(file) ||
         typeof file.content !== "string") || (standard.settings !== undefined && !isObject(standard.settings)))) {
@@ -105,15 +108,27 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
   }
   const suppliedUnits = Object.keys(sources);
   const candidates = (requested || !editorUnits.length) ? suppliedUnits : editorUnits;
-  const resolveImport = solidityImportResolver(sources, bundled);
+  const resolveImport = prepareImports ? null : solidityImportResolver(sources, bundled);
   const settings = { ...standard?.settings };
   if (settings.optimizer !== undefined && !isObject(settings.optimizer)) {
     throw new Error("Use a Solidity optimizer settings object");
   }
-  const remappings = importRemappings(settings.remappings, sources, bundled);
+  const remappings = prepareImports
+    ? await prepareImports(sources, settings.remappings)
+    : importRemappings(settings.remappings, sources, bundled);
   if (remappings !== undefined) settings.remappings = remappings;
-  const outputSelection = { __proto__: null, "*": { "*": artifactOutputs } };
-  if (!requested) {
+  const outputSelection = { __proto__: null };
+  if (prepareImports) {
+    const split = requested.lastIndexOf(":");
+    const symbol = requested.slice(split + 1) || "*";
+    for (const unit of candidates) {
+      if (split > 0 && unit !== requested.slice(0, split)) continue;
+      outputSelection[unit] = { [symbol]: artifactOutputs, ...(!requested && { "": ["ast"] }) };
+    }
+  } else {
+    outputSelection["*"] = { "*": artifactOutputs };
+  }
+  if (!prepareImports && !requested) {
     for (const unit of candidates) outputSelection[unit] = { "": ["ast"] };
   }
   let input = {
@@ -128,7 +143,7 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
     const errors = (output.errors ?? []).filter(item => item.severity === "error");
     let added = false;
     for (const error of errors) {
-      if (error.errorCode !== "6275") continue;
+      if (!resolveImport || error.errorCode !== "6275") continue;
       const path = /^Source "([^"]+)" not found:/.exec(error.message ?? "")?.[1];
       if (!path || owns(sources, path)) continue;
       const resolved = resolveImport(path);
@@ -145,7 +160,16 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
       input = { ...input, settings: { ...input.settings, viaIR: true } };
       continue;
     }
-    if (errors.length) throw new Error(diagnostics(errors, sources));
+    if (errors.length) {
+      const reported = prepareImports ? errors.map(error => error.errorCode !== "6275" ? error : {
+        ...error,
+        formattedMessage: (error.formattedMessage ?? error.message).replace(
+          "File not supplied initially.",
+          "Supply the exact imported file, a matching remapping, or a supported OpenZeppelin release.",
+        ),
+      }) : errors;
+      throw new Error(diagnostics(reported, sources));
+    }
     const [unit, name] = selectContract(output, candidates, requested);
     const contract = output.contracts[unit][name];
     if (!/^[a-f\d]+$/i.test(contract.evm.bytecode.object)) {
