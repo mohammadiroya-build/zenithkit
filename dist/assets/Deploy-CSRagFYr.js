@@ -56,6 +56,8 @@ import { SoliditySourceInput } from "./solidity-source-input.js";
 import { abortReason, checkAbort, requestTimeout } from "./request-timeout.js";
 import { compilationSource, compileSolidity, sourceLimits as K } from "./solidity-compile.js";
 import { compileCustomSolidity } from "./custom-compiler.js";
+import { openZeppelinReleases } from "./custom-imports.js";
+import { ownershipExample } from "./custom-examples.js";
 import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { getCompilerBuild } from "./compiler-versions.js";
 import { deploymentFees, feePaid, formatZthFee, submitWithDeploymentFees } from "./contract-fees.js";
@@ -1102,6 +1104,8 @@ function zs({ record: t }) {
     [m, y] = d.useState(() => rt("ZenithToken")),
     [u, N] = d.useState(""),
     [compilerVersion, setCompilerVersion] = d.useState(""),
+    [libraryRelease, setLibraryRelease] = d.useState(""),
+    [previousDraft, setPreviousDraft] = d.useState(null),
     [l, S] = d.useState(""),
     [T, p] = d.useState([]),
     [g, b] = d.useState(!1),
@@ -1125,19 +1129,21 @@ function zs({ record: t }) {
     Ue = d.useRef(null),
     se = d.useRef(!1),
     W = d.useMemo(
-      () => ({ source: compilationSource(u, T, Es(compilerVersion)), name: l.trim(), imports: T, attempt: Ze, version: compilerVersion }),
-      [u, l, T, Ze, compilerVersion],
+      () => ({ source: compilationSource(u, T, Es(compilerVersion)), name: l.trim(), imports: T, attempt: Ze, version: compilerVersion, libraryRelease }),
+      [u, l, T, Ze, compilerVersion, libraryRelease],
     ),
     U = (ue == null ? void 0 : ue.request) === W ? ue : null,
     _ = U == null ? void 0 : U.contract,
     hasSource = !!W.source.trim() || !!W.imports.length,
-    Re = s === "custom" && !!compilerVersion && hasSource && !g && !U;
+    Re = s === "custom" && !!compilerVersion && hasSource && !g && !U,
+    directExample = s === "custom" && u === ownershipExample,
+    proxyActive = me && !directExample;
   d.useEffect(() => {
     if (s !== "custom" || !W.version || !hasSource || g || U) return;
     const c = new AbortController(),
       f = setTimeout(async () => {
         try {
-          const C = await compileCustomSolidity(W.source, W.name, W.imports, c.signal, W.version, us);
+          const C = await compileCustomSolidity(W.source, W.name, W.imports, c.signal, W.version, us, W.libraryRelease);
           c.signal.aborted || Ve({ request: W, contract: C });
         } catch (C) {
           c.signal.aborted ||
@@ -1154,6 +1160,45 @@ function zs({ record: t }) {
       N(Es(next));
     }
     setCompilerVersion(next);
+  }
+  function toggleOwnership() {
+    if (k || g || !compilerVersion) return;
+    if (previousDraft) {
+      const draft = previousDraft;
+      N(draft.source);
+      S(draft.name);
+      p(draft.files);
+      I(draft.args);
+      A(draft.value);
+      bt(draft.deploy);
+      wt(draft.verify);
+      ge(draft.proxy);
+      Z(draft.initializer);
+      Y(draft.initializerArgs);
+      ft(draft.initializerValue);
+      xt(draft.existingAddress);
+      setCompilerVersion(draft.version);
+      setLibraryRelease(draft.release);
+      setPreviousDraft(null);
+      return;
+    }
+    setPreviousDraft({
+      source: u, name: l, files: T, args: w, value: B, deploy: $, verify: X, proxy: me,
+      initializer: v, initializerArgs: P, initializerValue: D, existingAddress: _e,
+      version: compilerVersion, release: libraryRelease,
+    });
+    N(ownershipExample);
+    S("");
+    p([]);
+    I("[]");
+    A("");
+    bt(true);
+    wt(false);
+    ge(false);
+    Z("");
+    Y("[]");
+    ft("");
+    xt("");
   }
   function re(c) {
     const f = [c, ...Me.current.filter((C) => C.id !== c.id)];
@@ -1196,7 +1241,7 @@ function zs({ record: t }) {
       if (!$ && !existingAddress) throw new Error("Enter an existing Zenith contract address");
       const E = s === "custom" ? _ : $ ? await $e(h, true) : await templateForVerification(h, existingAddress),
         V = s === "custom" ? Xe(w) : await Ts(h, m.values),
-        O = me && $,
+        O = proxyActive && $,
         Ct = s === "custom" ? "Custom" : h,
         De = {
           id: crypto.randomUUID(),
@@ -1512,17 +1557,38 @@ The implementation address was saved, the proxy did not finalize`
               open: () => z(!0),
             }),
           children: e.jsxs("form", {
-            className: "stack",
+            className: s === "custom" ? "stack custom-compiler-form" : "stack",
             onSubmit: vt,
             children: [
               s === "custom"
                 ? e.jsxs(e.Fragment, {
                     children: [
-                      e.jsx(CompilerVersionField, {
-                        value: compilerVersion,
-                        change: changeCompiler,
-                        disabled: !!k,
-                        hint: "Choose the version allowed by your source pragma",
+                      e.jsxs("div", {
+                        className: "custom-compiler-options",
+                        children: [
+                          e.jsx(CompilerVersionField, {
+                            value: compilerVersion,
+                            change: changeCompiler,
+                            disabled: !!k,
+                            hint: "Choose the version allowed by your source pragma",
+                          }),
+                          e.jsxs("label", {
+                            className: "field",
+                            children: [
+                              e.jsx("span", { children: "OpenZeppelin release" }),
+                              e.jsxs("select", {
+                                value: libraryRelease,
+                                disabled: !!k || !compilerVersion,
+                                onChange: (event) => setLibraryRelease(event.target.value),
+                                children: [
+                                  e.jsx("option", { value: "", children: "Automatic" }),
+                                  ...openZeppelinReleases.map(release => e.jsx("option", { value: release, children: release }, release)),
+                                ],
+                              }),
+                              e.jsx("span", { className: "small muted", children: "For unversioned imports; pinned imports and remappings still apply" }),
+                            ],
+                          }),
+                        ],
                       }),
                       e.jsx(L, {
                         label: "Contract Name",
@@ -1534,12 +1600,15 @@ The implementation address was saved, the proxy did not finalize`
                       e.jsx(SoliditySourceInput, {
                         value: u,
                         change: N,
-                        disabled: !!k,
+                        disabled: !!k || g,
                         locked: !compilerVersion,
+                        ownershipActive: !!previousDraft,
+                        ownershipSource: directExample,
+                        toggleOwnership,
                       }),
                       e.jsx("p", {
                         className: "small muted",
-                        children: `${compilerVersion ? `Solidity ${compilerVersion} · ` : ""}EVM Paris · Optimizer on · OpenZeppelin 5.0.2 bundled`,
+                        children: `${compilerVersion ? `Solidity ${compilerVersion} · ` : ""}EVM Paris · Optimizer on`,
                       }),
                       e.jsx("p", {
                         className: "small muted",
@@ -1697,9 +1766,9 @@ The implementation address was saved, the proxy did not finalize`
                       St &&
                         e.jsx(Ae, {
                           label: "Deploy as Proxy",
-                          checked: me && $,
+                          checked: proxyActive && $,
                           onChange: ge,
-                          disabled: !!k || !$,
+                          disabled: !!k || !$ || directExample,
                         }),
                     ],
                   }),
@@ -1709,13 +1778,13 @@ The implementation address was saved, the proxy did not finalize`
                         "Verify compares compiled bytecode with Zenith at no gas cost and does not publish your source to the explorer",
                     }),
                   $ &&
-                    me &&
+                    proxyActive &&
                     e.jsx(M, {
                       children:
                         "A proxy needs two transactions and creates a ProxyAdmin owned by your wallet, so use direct deployment if you do not need upgrades",
                     }),
                   $ &&
-                    me &&
+                    proxyActive &&
                     s === "custom" &&
                     e.jsxs("div", {
                       className: "fields",

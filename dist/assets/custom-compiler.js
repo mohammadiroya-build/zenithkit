@@ -58,7 +58,7 @@ function runWorker(worker, input, signal) {
   });
 }
 
-export async function compileCustomSolidity(source, name, uploads, parent, version, createWorker) {
+export async function compileCustomSolidity(source, name, uploads, parent, version, createWorker, release = "") {
   const expected = getCompilerBuild(version);
   const timeout = requestTimeout(customCompilerTimeout, parent);
   const signal = timeout.signal;
@@ -72,7 +72,7 @@ export async function compileCustomSolidity(source, name, uploads, parent, versi
     });
     ready.catch(() => {});
     const prepareImports = (sources, remappings) => collectCustomImports(sources, remappings,
-      release => runUntilAbort(signal, () => loadBundle(release)));
+      version => runUntilAbort(signal, () => loadBundle(version)), release);
     return await compileSolidity(source, name, {}, async input => {
       await ready;
       return runWorker(owned.worker, input, signal);
