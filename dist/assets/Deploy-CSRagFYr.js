@@ -54,7 +54,7 @@ import {
 } from "./index-BOd0iaB5.js";
 import { SoliditySourceInput } from "./solidity-source-input.js";
 import { abortReason, checkAbort, requestTimeout } from "./request-timeout.js";
-import { importRemappings, solidityImportResolver } from "./solidity-imports.js";
+import { compilationSource, compileSolidity, sourceLimits as K } from "./solidity-compile.js";
 import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { getCompilerBuild } from "./compiler-versions.js";
 import { deploymentFees, feePaid, formatZthFee, submitWithDeploymentFees } from "./contract-fees.js";
@@ -185,186 +185,8 @@ import { compareRuntimeBytecode, metadataTail, savedVerificationRecord } from ".
     ["path", { d: "m17 8-5-5-5 5", key: "7q97r8" }],
     ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
   ],
-  Qt = H("upload", Xt),
-  es = {
-    optimizer: { enabled: !0, runs: 200 },
-    evmVersion: "shanghai",
-    outputSelection: {
-      "*": { "*": ["abi", "metadata", "evm.bytecode", "evm.deployedBytecode"] },
-    },
-  };
-function ts(t, r = {}) {
-  return { language: "Solidity", sources: t, settings: { ...es, ...r } };
-}
-function ss(t) {
-  const r = (t.errors ?? []).filter(({ severity: n }) => n === "error");
-  if (r.length)
-    throw new Error(
-      r.map(({ formattedMessage: n }) => n).join(`
-`),
-    );
-  return t;
-}
-function rs(t, r, n, s, o, i = !1) {
-  var m, y;
-  const a =
-    (y = (m = t.contracts) == null ? void 0 : m[n]) == null ? void 0 : y[s];
-  if (!(a != null && a.evm.bytecode.object))
-    throw new Error(`No deployable contract named ${s}`);
-  if (!/^[a-f\d]+$/i.test(a.evm.bytecode.object))
-    throw new Error("Link external libraries before deployment");
-  const h = JSON.parse(a.metadata),
-    x = Object.keys(h.sources);
-  return {
-    source: n,
-    symbol: s,
-    compilerVersion: o,
-    abi: a.abi,
-    bytecode: `0x${a.evm.bytecode.object}`,
-    deployedBytecode: `0x${a.evm.deployedBytecode.object}`,
-    immutableReferences: a.evm.deployedBytecode.immutableReferences ?? {},
-    input: i
-      ? { ...r, sources: Object.fromEntries(x.map((u) => [u, r.sources[u]])) }
-      : r,
-    metadata: h,
-  };
-}
-const ze = { evmVersion: "paris" },
-  ye = (t) => !!t && typeof t == "object" && !Array.isArray(t),
-  owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key),
-  as = {
-    "*": { "*": ["abi", "metadata", "evm.bytecode", "evm.deployedBytecode"] },
-  },
-  Ke = new TextEncoder(),
-  os = "Custom.sol",
-  K = { files: 512, fileBytes: 5e5, totalBytes: 5e6 };
-function is(t, r = {}) {
-  if (r.optimizer !== void 0 && !ye(r.optimizer))
-    throw new Error("Use a Solidity optimizer settings object");
-  return ts(t, {
-    ...r,
-    evmVersion: ze.evmVersion,
-    optimizer: { runs: 200, ...r.optimizer, enabled: !0 },
-    outputSelection: as,
-  });
-}
-function cs(t) {
-  const r = t.trim().replace(/^(?:\.\/)+/, "");
-  if (
-    r.length > 512 ||
-    !r.endsWith(".sol") ||
-    /[\\:\u0000-\u001f\u007f]/.test(r) ||
-    r.split("/").some((n) => !n || n === ".." || n === ".")
-  )
-    throw new Error(`Use a relative Solidity import path for "${t}"`);
-  return r;
-}
-function ls(t, r, n) {
-  const s = n.lastIndexOf(":"),
-    o = s < 0 ? "" : n.slice(0, s),
-    i = n.slice(s + 1),
-    a = r.flatMap((x) => {
-      var m;
-      return o && o !== x
-        ? []
-        : Object.entries(((m = t.contracts) == null ? void 0 : m[x]) ?? {})
-            .filter(([y, u]) => {
-              var N, l;
-              return (
-                (!i || y === i) &&
-                ((l =
-                  (N = u == null ? void 0 : u.evm) == null
-                    ? void 0
-                    : N.bytecode) == null
-                  ? void 0
-                  : l.object)
-              );
-            })
-            .map(([y]) => [x, y]);
-    });
-  if (a.length === 1) return a[0];
-  if (!a.length)
-    throw new Error(
-      i
-        ? `No deployable contract named ${n}`
-        : "No deployable contract found in the editor",
-    );
-  const h = a.slice(0, 6).map(([x, m]) => `${x}:${m}`);
-  throw new Error(`Enter path:ContractName to select one contract:
-${h.join(`
-`)}${
-    a.length > h.length
-      ? `
-...`
-      : ""
-  }`);
-}
-async function ds(t, r, n, s, o, expectedBuild) {
-  if (!t.trim() || Ke.encode(t).length > K.fileBytes)
-    throw new Error("Enter Solidity source up to 500 KB");
-  const i = t.trimStart().startsWith("{") ? JSON.parse(t) : null;
-  if (
-    i !== null &&
-    (i.language !== "Solidity" ||
-      !ye(i.sources) ||
-      !Object.keys(i.sources).length ||
-      Object.values(i.sources).some(
-        (l) => !ye(l) || typeof l.content != "string",
-      ) ||
-      (i.settings !== void 0 && !ye(i.settings)))
-  )
-    throw new Error("Use Solidity Standard JSON with embedded source content");
-  const a = Object.create(null);
-  for (const [l, S] of Object.entries(
-    (i == null ? void 0 : i.sources) ?? { [os]: { content: t } },
-  ))
-    a[l] = S;
-  const h = Object.keys(a);
-  if (h.length + o.length > K.files + 1)
-    throw new Error("Use no more than 512 imported Solidity files");
-  let x = 0;
-  for (const l of o) {
-    const S = cs(l.path);
-    if (owns(a, S)) throw new Error(`Duplicate source path: ${S}`);
-    const T = Ke.encode(l.content).length;
-    if (((x += T), T > K.fileBytes || x > K.totalBytes))
-      throw new Error("Imports are limited to 500 KB per file and 5 MB total");
-    a[S] = { content: l.content };
-  }
-  const m = Object.keys(a);
-  const resolveImport = solidityImportResolver(a, n);
-  const settings = { ...i?.settings };
-  const remappings = importRemappings(settings.remappings, a, n);
-  if (remappings !== undefined) settings.remappings = remappings;
-  const u = is(a, settings);
-  for (;;) {
-    const { output: S, compilerVersion: T } = await s(u);
-    if (T !== expectedBuild)
-      throw new Error(`Expected Solidity ${expectedBuild}`);
-    let p = !1;
-    for (const j of S.errors ?? []) {
-      if (j.errorCode !== "6275") continue;
-      const z = /^Source "([^"]+)" not found:/.exec(j.message ?? "")?.[1];
-      if (!z || owns(a, z)) continue;
-      const source = resolveImport(z);
-      if (source) {
-        if (Object.keys(a).length >= K.files + 1 + Object.keys(n).length)
-          throw new Error("Too many resolved Solidity imports");
-        a[z] = source;
-        p = true;
-      }
-    }
-    if (p) continue;
-    ss(S);
-    const [g, b] = ls(S, r ? m : h, r);
-    return {
-      ...rs(S, u, g, b, T, !0),
-      warnings: (S.errors ?? [])
-        .filter((j) => j.severity === "warning")
-        .map((j) => j.formattedMessage),
-    };
-  }
-}
+  Qt = H("upload", Xt);
+const owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const Ie = de([
     "function decimals() view returns (uint8)",
     "function approve(address,uint256) returns (bool)",
@@ -589,7 +411,7 @@ async function ps(t, r, n, s, version, prepared) {
         }
       });
   try {
-    return await ds(t, r, o, x, n, expectedBuild);
+    return await compileSolidity(t, r, o, x, n, expectedBuild);
   } finally {
     if (owned) {
       i.terminate();
@@ -1302,14 +1124,15 @@ function zs({ record: t }) {
     Ue = d.useRef(null),
     se = d.useRef(!1),
     W = d.useMemo(
-      () => ({ source: u, name: l.trim(), imports: T, attempt: Ze, version: compilerVersion }),
+      () => ({ source: compilationSource(u, T, Es(compilerVersion)), name: l.trim(), imports: T, attempt: Ze, version: compilerVersion }),
       [u, l, T, Ze, compilerVersion],
     ),
     U = (ue == null ? void 0 : ue.request) === W ? ue : null,
     _ = U == null ? void 0 : U.contract,
-    Re = s === "custom" && !!compilerVersion && !!u.trim() && !g && !U;
+    hasSource = !!W.source.trim() || !!W.imports.length,
+    Re = s === "custom" && !!compilerVersion && hasSource && !g && !U;
   d.useEffect(() => {
-    if (s !== "custom" || !W.version || !W.source.trim() || g || U) return;
+    if (s !== "custom" || !W.version || !hasSource || g || U) return;
     const c = new AbortController(),
       f = setTimeout(async () => {
         try {
@@ -1323,7 +1146,7 @@ function zs({ record: t }) {
     return () => {
       (clearTimeout(f), c.abort());
     };
-  }, [s, g, U, W]);
+  }, [s, g, U, W, hasSource]);
   function changeCompiler(next) {
     if (next === compilerVersion) return;
     if ((!compilerVersion && !u) || (compilerVersion && u === Es(compilerVersion))) {
@@ -1705,7 +1528,7 @@ The implementation address was saved, the proxy did not finalize`
                         value: l,
                         change: S,
                         disabled: !!k || !compilerVersion,
-                        hint: "Optional when the editor contains one deployable contract",
+                        hint: "Optional when there is one deployable contract",
                       }),
                       e.jsx(SoliditySourceInput, {
                         value: u,
@@ -1720,7 +1543,7 @@ The implementation address was saved, the proxy did not finalize`
                       e.jsx("p", {
                         className: "small muted",
                         children:
-                          "Paste Solidity or Standard JSON, then compilation starts automatically when you stop editing",
+                          "Paste Solidity or Standard JSON, or upload Solidity files. An untouched starter example is ignored when files are uploaded",
                       }),
                       e.jsx(vs, {
                         files: T,
@@ -1746,7 +1569,7 @@ The implementation address was saved, the proxy did not finalize`
                                 className: "btn ghost small",
                                 type: "button",
                                 onClick: () => yt((c) => c + 1),
-                                disabled: !compilerVersion || !u.trim() || Re || g || !!k,
+                                disabled: !compilerVersion || !hasSource || Re || g || !!k,
                                 children: "Compile",
                               }),
                             ],

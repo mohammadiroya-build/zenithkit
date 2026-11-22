@@ -6,7 +6,7 @@
   },
   "scripts": {
     "build": "test -f dist/index.html",
-    "test": "node --test tools/contracts.test.mjs"
+    "test": "node --test tools/*.test.mjs"
   },
   "devDependencies": {
     "wrangler": "4.166.0"

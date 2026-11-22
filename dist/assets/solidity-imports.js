@@ -5,6 +5,16 @@ const packageAliases = packages.flatMap((name) => [
   [`node_modules/${name}@${version}/`, `${name}/`],
   [`node_modules/${name}/`, `${name}/`],
 ]);
+const remixAliases = packages.flatMap((name) => {
+  const repository = name.replace("@openzeppelin/", "openzeppelin-");
+  const tag = `v${version}/contracts/`;
+  return [
+    `https://github.com/OpenZeppelin/${repository}/blob/${tag}`,
+    `https://raw.githubusercontent.com/OpenZeppelin/${repository}/${tag}`,
+    `https://unpkg.com/${name}@${version}/`,
+    `https://cdn.jsdelivr.net/npm/${name}@${version}/`,
+  ].map(alias => [alias, `${name}/`]);
+});
 
 const owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const installed = (path) => path.replace(/^(?:[^/]+\/)*?node_modules\//, "");
@@ -27,16 +37,39 @@ function modifiedPackages(sources, bundled) {
   return modified;
 }
 
+function installedPackagePaths(sources) {
+  const folders = new Map();
+  const units = Object.keys(sources);
+  for (const path of units) {
+    const nested = path.lastIndexOf("/node_modules/");
+    const offset = nested >= 0 ? nested + "/node_modules/".length :
+      path.startsWith("node_modules/") ? "node_modules/".length : 0;
+    const entry = offset && /^((?:@[^/]+\/)?[^/]+)\//.exec(path.slice(offset));
+    if (!entry) continue;
+    const prefix = `${entry[1]}/`;
+    const folder = path.slice(0, offset + prefix.length);
+    if (!folders.has(prefix)) folders.set(prefix, folder);
+    else if (folders.get(prefix) !== folder) folders.set(prefix, null);
+  }
+  return [...folders].filter(([prefix, folder]) => folder && !units.some(unit => unit.startsWith(prefix)));
+}
+
 export function importRemappings(existing, sources, bundled) {
   if (existing !== undefined && (!Array.isArray(existing) || existing.some((entry) => typeof entry !== "string"))) {
     return existing;
   }
   const rules = existing ?? [];
-  const prefixes = rules.map((entry) => entry.split("=", 1)[0].split(":").pop());
+  const prefixes = rules.map((entry) => {
+    const left = entry.split("=", 1)[0];
+    return left.slice(left.indexOf(":") + 1);
+  });
   const sourceFiles = Object.values(sources);
-  const requested = packageAliases.filter(([alias]) =>
-    sourceFiles.some(({ content }) => content.includes(`"${alias}`) || content.includes(`'${alias}`))
-  );
+  const wants = alias => sourceFiles.some(({ content }) => content.includes(`"${alias}`) || content.includes(`'${alias}`));
+  const installedPaths = new Map(installedPackagePaths(sources));
+  const nodeAliases = [...installedPaths].flatMap(([prefix, folder]) => [
+    [prefix, folder], [`node_modules/${prefix}`, folder],
+  ]);
+  const requested = [...nodeAliases, ...packageAliases, ...remixAliases].filter(([alias]) => wants(alias));
   if (!requested.length) return existing;
   const modified = modifiedPackages(sources, bundled);
   const pinnedOverrides = new Set();
@@ -47,11 +80,17 @@ export function importRemappings(existing, sources, bundled) {
       pinnedOverrides.add(packageOf(canonical));
     }
   }
-  const defaults = requested
-    .filter(([alias]) => !prefixes.some((prefix) => alias.startsWith(prefix) || prefix.startsWith(alias)))
-    .filter(([alias, canonical]) => !alias.includes(`@${version}/`) ||
-      (!modified.has(packageOf(canonical)) && !pinnedOverrides.has(packageOf(canonical))))
-    .map(([alias, canonical]) => `${alias}=${canonical}`);
+  const defaults = [];
+  const defined = new Set();
+  for (const [alias, canonical] of requested) {
+    if (defined.has(alias) || prefixes.some(prefix => alias.startsWith(prefix) || prefix.startsWith(alias))) continue;
+    const pkg = packageOf(canonical);
+    if (pkg && (alias.includes(`@${version}/`) || alias.startsWith("https://")) &&
+        (modified.has(pkg) || pinnedOverrides.has(pkg))) continue;
+    const target = installedPaths.get(canonical) ?? canonical;
+    defined.add(alias);
+    if (alias !== target) defaults.push(`${alias.includes(":") ? ":" : ""}${alias}=${target}`);
+  }
   return defaults.length ? [...rules, ...defaults] : existing;
 }
 
