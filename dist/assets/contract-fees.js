@@ -134,7 +134,7 @@ export async function deploymentFees(client, request) {
   if (base !== null && tip !== null && (base > 0n || tip > 0n)) {
     const standard = { gas: gasLimit, maxPriorityFeePerGas: tip, maxFeePerGas: gasCap(base, tip) };
     const fresh = expanded && Date.now() >= standardUntil && positive(tip) ? lowerTier(history, tip) : null;
-    const budget = Math.min(1500, deadline - Date.now());
+    const budget = deadline - Date.now();
     if (fresh === null || budget <= 0) return standard;
     return within((async () => {
       const expires = Date.now() + budget;
