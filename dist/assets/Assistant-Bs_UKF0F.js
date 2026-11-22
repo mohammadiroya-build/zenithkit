@@ -4,6 +4,7 @@ import { createBuildTiming, formatBuildTime } from "./build-timing.js";
 import { formatZthFee } from "./contract-fees.js";
 import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { deploymentValue, initializerFor, readAssistantDeployment } from "./assistant-deployment-plan.js";
+import { checkAbort, requestTimeout } from "./request-timeout.js";
 import * as deploymentTools from "./Deploy-CSRagFYr.js";
 import {
   ah as Oa,
@@ -329,7 +330,7 @@ const on = (a) =>
     a.map((i) => `import "@openzeppelin/contracts/${i}.sol";`).join(`
 `),
   _ = (a, i) => `// SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity 0.8.28;
 ${on(a)}
 
 ${i.trim()}
@@ -553,24 +554,28 @@ function sn({ kind: a, contractName: i, values: n }) {
   return { ...un[a](i, n), name: i, generated: !1 };
 }
 async function hostedDraft(prompt, language, signal, compilerVersion, repair) {
-  const timeout = AbortSignal.timeout(repair ? 18_000 : 33_000);
-  let response;
+  const timeout = requestTimeout(repair ? 18_000 : 25_000, signal);
+  let response, result;
   try {
     response = await fetch(new URL("../api/contracts/draft", import.meta.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, language: language || undefined, compilerVersion, ...repair }),
-      signal: AbortSignal.any([signal, timeout]),
+      signal: timeout.signal,
     });
+    if (response.headers.get("Content-Type")?.includes("application/json")) {
+      result = await response.json();
+    }
   } catch {
-    signal.throwIfAborted();
-    if (timeout.aborted) throw new Error("The draft took too long, try a shorter request");
+    checkAbort(signal);
+    if (timeout.expired) throw new Error("The draft took too long, try a shorter request");
     throw new Error("Could not reach hosted drafting, check your connection or use a quick template");
+  } finally {
+    timeout.clear();
   }
-  if (!response.headers.get("Content-Type")?.includes("application/json")) {
+  if (!result || typeof result !== "object") {
     throw new Error("Hosted drafting is not available here, quick templates still work");
   }
-  const result = await response.json();
   if (!response.ok || typeof result.source !== "string") {
     throw new Error(result.error || "No draft came back, try again or use a quick template");
   }
@@ -580,7 +585,7 @@ function shouldRepair(error) {
   return /\b(?:ParserError|TypeError|DeclarationError|SyntaxError|CompilerError|DocstringParsingError):|No deployable contract|Multiple deployable contracts|Link external libraries/i.test(error?.message ?? "");
 }
 const proxyExampleRequest = "Create a proxy-ready contract that stores a number";
-function proxyExample(request) {
+function proxyExample(request, compilerVersion) {
   if (request.toLowerCase().replace(/[.!]$/, "") !== proxyExampleRequest.toLowerCase()) return null;
   return {
     title: "Number storage · Proxy-ready template",
@@ -591,7 +596,7 @@ function proxyExample(request) {
     ],
     editable: true,
     source: `// SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity ${compilerVersion};
 
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
@@ -696,7 +701,7 @@ function hn({ wallet: a, record: i, save: n }) {
   async function G(l, h, prepared) {
     w("Compiling in your browser…");
     const p = await si(l.source, l.name, [], h.signal, compilerVersion, prepared);
-    return (h.signal.throwIfAborted(), c(p), p);
+    return (checkAbort(h.signal), c(p), p);
   }
   async function qa(l) {
     if (!compilerVersion || N.current || C.current || f) return;
@@ -716,7 +721,8 @@ function hn({ wallet: a, record: i, save: n }) {
     if (!request) return;
     return qa(async (build) => {
       const timing = createBuildTiming();
-      const signal = AbortSignal.any([build.signal, AbortSignal.timeout(56_000)]);
+      const timeout = requestTimeout(56_000, build.signal);
+      const { signal } = timeout;
       let result = "Failed";
       let prepared;
       let compilerTask;
@@ -727,7 +733,7 @@ function hn({ wallet: a, record: i, save: n }) {
       w("Reading your request…");
       try {
         const quick = await timing.measure("request", () => {
-          const storage = matchStorageRequest(request) || proxyExample(request);
+          const storage = matchStorageRequest(request, compilerVersion) || proxyExample(request, compilerVersion);
           if (storage) return storage;
           if (requestLanguage && requestLanguage !== "en") return null;
           try {
@@ -740,7 +746,7 @@ function hn({ wallet: a, record: i, save: n }) {
         if (quick) {
           const selected = {
             ...quick,
-            source: quick.source.replace(/^pragma solidity 0\.8\.20;$/m, `pragma solidity ${compilerVersion};`),
+            source: quick.source.replace(/^pragma solidity 0\.8\.28;$/m, `pragma solidity ${compilerVersion};`),
           };
           b(selected);
           if (D.current) D.current.open = false;
@@ -753,7 +759,7 @@ function hn({ wallet: a, record: i, save: n }) {
           const source = await timing.measure("draft", () =>
             hostedDraft(request, requestLanguage, signal, compilerVersion)
           );
-          signal.throwIfAborted();
+          checkAbort(signal);
           const draft = { ...Ia(""), title: "Custom draft", generated: true, source };
           b(draft);
           requestAnimationFrame(() => {
@@ -764,7 +770,7 @@ function hn({ wallet: a, record: i, save: n }) {
           try {
             contract = await timing.measure("compile", () => G(draft, { signal }, prepared));
           } catch (error) {
-            signal.throwIfAborted();
+            checkAbort(signal);
             if (!shouldRepair(error)) throw error;
             w("Fixing a compiler error…");
             let repaired;
@@ -773,7 +779,7 @@ function hn({ wallet: a, record: i, save: n }) {
                 hostedDraft(request, requestLanguage, signal, compilerVersion, { source, diagnostic: ha(error).slice(0, 2000) })
               );
             } catch (repairError) {
-              signal.throwIfAborted();
+              checkAbort(signal);
               throw new Error(`${ha(repairError)}\n\nCompiler output:\n${ha(error)}`);
             }
             const fixed = { ...draft, source: repaired };
@@ -789,6 +795,7 @@ function hn({ wallet: a, record: i, save: n }) {
         else if (signal.aborted) throw new Error("The build took too long, try a shorter request or a quick template");
         throw error;
       } finally {
+        timeout.clear();
         if (prepared) prepared.close();
         else if (compilerTask) void compilerTask.then((compiler) => compiler?.close());
         setBuildTimings(timing.finish(result));

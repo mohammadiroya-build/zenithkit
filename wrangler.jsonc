@@ -2,6 +2,7 @@
   "name": "zenithkit",
   "compatibility_date": "2026-11-20",
   "main": "./workers/contracts.mjs",
+  "no_bundle": true,
   "ai": { "binding": "AI" },
   "ratelimits": [
     {

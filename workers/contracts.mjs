@@ -2,7 +2,7 @@ const MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const MAX_BODY = 24_576;
 const MAX_SOURCE = 15_000;
 const MAX_DIAGNOSTIC = 2_000;
-const SUPPORTED_COMPILERS = new Set(["0.8.20", "0.8.24"]);
+const SUPPORTED_COMPILERS = new Set(["0.8.28", "0.8.24"]);
 const SYSTEM = [
   "Draft Solidity contracts for Zenith EVM Testnet. Interpret the original request directly, including non-English input and any optional language hint. Keep identifiers, quoted values, addresses, access restrictions, and amounts unchanged where specified.",
   "Output exactly one complete Solidity source file, starting with an SPDX license comment followed by the exact Solidity pragma specified below, no prose or markdown. Use one deployable contract, with interfaces and libraries only when needed. Use English for generated comments and explanatory strings.",
@@ -48,15 +48,26 @@ async function readBody(request) {
 }
 
 function extractSource(result, compilerVersion) {
-  const choice = result?.choices?.[0];
+  const output = result?.result ?? result;
+  const choice = output?.choices?.[0];
   if (["length", "content_filter"].includes(choice?.finish_reason)) return null;
-  let text = choice?.message?.content ?? result?.response;
+  let text = choice?.message?.content ?? output?.response;
+  if (Array.isArray(text)) {
+    text = text.filter((part) => part?.type === "text").map((part) => part.text).join("");
+  }
   if (typeof text !== "string") return null;
-  text = text.trim().replace(/^<think>[\s\S]*?<\/think>\s*/i, "");
-  const fence = /```(?:solidity|sol)?[ \t]*\r?\n([\s\S]*?)```/i.exec(text);
-  if (fence) text = fence[1].trim();
-  const pragma = /^[ \t]*pragma\s+solidity\s+([0-9.]+)\s*;/m.exec(text);
-  if (text.length > MAX_SOURCE || !/^\/\/ SPDX-License-Identifier: /.test(text) || pragma?.[1] !== compilerVersion ||
+  text = text.trim().replace(/^(?:<think>[\s\S]*?<\/think>\s*)+/i, "");
+  for (const fence of text.matchAll(/```(?:solidity|sol)?[ \t]*\r?\n([\s\S]*?)```/gi)) {
+    if (/\bpragma\s+solidity\b/.test(fence[1])) {
+      text = fence[1].trim();
+      break;
+    }
+  }
+  const header = /^[ \t]*(?:\/\/\s*SPDX-License-Identifier:\s*\S[^\r\n]*|\/\*\s*SPDX-License-Identifier:\s*[^*\r\n]+\*\/)/m.exec(text);
+  if (header) text = text.slice(header.index).trim();
+  const pragma = /^[ \t]*pragma\s+solidity\s+([^;]+);/m.exec(text)?.[1].trim();
+  const exact = /^=?\s*(\d+\.\d+\.\d+)$/.exec(pragma ?? "")?.[1];
+  if (text.length > MAX_SOURCE || !header || !pragma || (exact && exact !== compilerVersion) ||
       !/\bcontract\s+[A-Za-z_]\w*/.test(text) ||
       !text.endsWith("}")) return null;
   return `${text}\n`;
@@ -69,7 +80,7 @@ export default {
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, { Allow: "POST" });
     const origin = request.headers.get("Origin");
     if ((origin && origin !== url.origin) || request.headers.get("Sec-Fetch-Site") === "cross-site") {
-      return json({ error: "Open the assistant from Zenith Kit" }, 403);
+      return json({ error: "Open the assistant on the same site" }, 403);
     }
     if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("Content-Type") ?? "")) {
       return json({ error: "Send a JSON request" }, 415);
@@ -83,10 +94,9 @@ export default {
           typeof body.diagnostic !== "string" || !body.diagnostic.trim() || body.diagnostic.length > MAX_DIAGNOSTIC))) {
       return json({ error: "Describe the contract in up to 1600 characters" }, 400);
     }
-    // Existing sessions from the previous release used 0.8.20 without sending a version.
-    const { compilerVersion = "0.8.20" } = body;
+    const { compilerVersion } = body;
     if (!SUPPORTED_COMPILERS.has(compilerVersion)) {
-      return json({ error: "Select Solidity 0.8.20 or 0.8.24 before drafting" }, 400);
+      return json({ error: "Select Solidity 0.8.28 or 0.8.24 before drafting" }, 400);
     }
     if (!env.AI?.run || !env.CONTRACT_DRAFT_LIMIT?.limit || !env.CONTRACT_DRAFT_SHARED_LIMIT?.limit) {
       return json({ error: "Hosted drafting is not available on this deployment" }, 503);
@@ -107,7 +117,7 @@ export default {
       draftRequest.previous_source = body.source;
       draftRequest.compiler_error = body.diagnostic;
     }
-    const timeout = body.source ? 15_000 : 30_000;
+    const timeout = body.source ? 15_000 : 24_000;
     let timer;
     try {
       const result = await Promise.race([
@@ -116,6 +126,7 @@ export default {
             { role: "system", content: `${SYSTEM} Use this exact pragma: pragma solidity ${compilerVersion};` },
             { role: "user", content: JSON.stringify(draftRequest) },
           ],
+          chat_template_kwargs: { enable_thinking: false },
           max_completion_tokens: 2200,
           temperature: 0.1,
         }),

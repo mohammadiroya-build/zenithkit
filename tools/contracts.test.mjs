@@ -4,10 +4,12 @@ import { compareRuntimeBytecode } from "../dist/assets/contract-bytecode.js";
 import { deploymentFees, feePaid, formatZthFee } from "../dist/assets/contract-fees.js";
 import { matchStorageRequest } from "../dist/assets/request-storage.js";
 import { deploymentValue, initializerFor, readAssistantDeployment } from "../dist/assets/assistant-deployment-plan.js";
+import { checkAbort, requestTimeout } from "../dist/assets/request-timeout.js";
+import { importRemappings, solidityImportResolver } from "../dist/assets/solidity-imports.js";
 import worker from "../workers/contracts.mjs";
 
-const validSource = "// SPDX-License-Identifier: MIT\npragma solidity 0.8.20;\ncontract Demo {}\n";
-const path = "https://zenithkit.example/api/contracts/draft";
+const validSource = "// SPDX-License-Identifier: MIT\npragma solidity 0.8.28;\ncontract Demo {}\n";
+const path = "https://app.example/api/contracts/draft";
 const allow = { limit: async () => ({ success: true }) };
 const env = run => ({
   AI: { run },
@@ -17,7 +19,7 @@ const env = run => ({
 const post = (body, headers = {}) => new Request(path, {
   method: "POST",
   headers: { "Content-Type": "application/json", ...headers },
-  body: JSON.stringify(body),
+  body: JSON.stringify({ compilerVersion: "0.8.28", ...body }),
 });
 
 test("worker forwards the unchanged original request in one model call", async () => {
@@ -26,6 +28,7 @@ test("worker forwards the unchanged original request in one model call", async (
   const res = await worker.fetch(post({ prompt: original, language: "es" }), env(async (model, input) => {
     calls++;
     assert.equal(model, "@cf/google/gemma-4-26b-a4b-it");
+    assert.equal(input.chat_template_kwargs.enable_thinking, false);
     assert.deepEqual(JSON.parse(input.messages[1].content), { request: original, language_hint: "es" });
     return { choices: [{ message: { content: `\`\`\`solidity\n${validSource}\`\`\`` }, finish_reason: "stop" }] };
   }));
@@ -35,9 +38,9 @@ test("worker forwards the unchanged original request in one model call", async (
   assert.deepEqual(await res.json(), { source: validSource });
 });
 
-for (const compilerVersion of ["0.8.20", "0.8.24"]) {
+for (const compilerVersion of ["0.8.28", "0.8.24"]) {
   test(`worker requests the selected Solidity ${compilerVersion} for drafting and repair`, async () => {
-    const source = validSource.replace("0.8.20", compilerVersion);
+    const source = validSource.replace("0.8.28", compilerVersion);
     const prompt = "Store a single number";
     for (const repair of [false, true]) {
       const diagnostic = "ParserError: example";
@@ -57,12 +60,24 @@ for (const compilerVersion of ["0.8.20", "0.8.24"]) {
 }
 
 test("worker rejects an unsupported compiler or a draft for the wrong compiler", async () => {
+  assert.equal((await worker.fetch(post({ prompt: "Store a number", compilerVersion: undefined }), {})).status, 400);
   assert.equal((await worker.fetch(post({ prompt: "Store a number", compilerVersion: "0.8.99" }), {})).status, 400);
   const response = await worker.fetch(
     post({ prompt: "Store a number", compilerVersion: "0.8.24" }),
     env(async () => ({ response: validSource })),
   );
   assert.equal(response.status, 502);
+});
+
+test("worker extracts a wrapped completion with a compatible pragma and no extraneous text", async () => {
+  const body = validSource.replace("0.8.28", "^0.8.28");
+  const response = await worker.fetch(post({ prompt: "Create a registry" }), env(async () => ({
+    result: { choices: [{ finish_reason: "stop", message: { content: [
+      { type: "text", text: `<think>internal</think>\n\`\`\`solidity\n${body}\`\`\`` },
+    ] } }] },
+  })));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { source: body });
 });
 
 test("worker routes, strips malformed completions, and enforces rate limits", async () => {
@@ -80,8 +95,48 @@ test("worker routes, strips malformed completions, and enforces rate limits", as
 });
 
 test("quick storage does not drop extra requirements", () => {
-  assert.equal(matchStorageRequest("Create a contract that stores a number").name, "NumberStore");
-  assert.equal(matchStorageRequest("Create a contract that stores a number for owners only"), null);
+  for (const version of ["0.8.28", "0.8.24"]) {
+    const result = matchStorageRequest("Create a contract that stores a number", version);
+    assert.equal(result.name, "NumberStore");
+    assert.ok(result.source.includes(`pragma solidity ${version};`));
+    assert.equal(matchStorageRequest("Create a contract that stores a number for owners only", version), null);
+  }
+});
+
+test("the timeout preserves cancellation and can be cleared before it expires", async () => {
+  const parent = new AbortController();
+  const timed = requestTimeout(25_000, parent.signal);
+  parent.abort();
+  assert.throws(() => checkAbort(timed.signal), { name: "AbortError" });
+  assert.equal(timed.expired, false);
+  const cleared = requestTimeout(0);
+  cleared.clear();
+  const expired = requestTimeout(0);
+  await new Promise((resolve) => expired.signal.addEventListener("abort", resolve, { once: true }));
+  assert.equal(cleared.signal.aborted, false);
+  assert.equal(expired.expired, true);
+  assert.throws(() => checkAbort(expired.signal), { name: "TimeoutError" });
+});
+
+test("imports resolve pinned dependencies and uploads without substituting another version", () => {
+  const pkg = "@openzeppelin/contracts";
+  const sources = {
+    "project/node_modules/vendor/Hash.sol": { content: "uploaded" },
+    "workspace/lib/Shared.sol": { content: "local" },
+  };
+  const bundled = { [`${pkg}/utils/Math.sol`]: "official" };
+  const resolve = solidityImportResolver(sources, bundled);
+  assert.equal(resolve(`${pkg}@5.0.2/utils/Math.sol`).content, "official");
+  assert.equal(resolve(`node_modules/${pkg}/utils/Math.sol`).content, "official");
+  assert.equal(resolve(`${pkg}@4.9.0/utils/Math.sol`), undefined);
+  assert.equal(resolve("vendor/Hash.sol").content, "uploaded");
+  assert.equal(resolve("lib/Shared.sol").content, "local");
+  assert.equal(resolve("Missing.sol"), undefined);
+  const explicit = `${pkg}@5.0.2/=vendor/`;
+  const rules = importRemappings([explicit], sources, bundled);
+  assert.ok(rules.includes(explicit));
+  assert.ok(!rules.includes(`${pkg}@5.0.2/=${pkg}/`));
+  assert.ok(rules.includes(`node_modules/${pkg}/=${pkg}/`));
 });
 
 test("gas limit and fee quote favor recent valid lower tips with full price cap", async () => {

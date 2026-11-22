@@ -1,4 +1,4 @@
-if (typeof Module === 'undefined') importScripts('./soljson-0.8.20.js')
+if (typeof Module === 'undefined') importScripts('./soljson-0.8.28.js')
 
 const compile = Module.cwrap('solidity_compile', 'string', ['string', 'number', 'number'])
 const version = Module.cwrap('solidity_version', 'string', [])

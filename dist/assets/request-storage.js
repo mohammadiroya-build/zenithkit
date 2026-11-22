@@ -32,7 +32,7 @@ const requests = [
   },
 ];
 
-export function matchStorageRequest(request) {
+export function matchStorageRequest(request, compilerVersion) {
   if (typeof request !== "string" || request.length > 1600) return null;
   let text = request.replace(/\s+/gu, " ").trim();
   const nameMatch = /(?:^|\s)(?:contract name|solidity name)\s*[:：]\s*([A-Za-z_]\w{0,63})[.!؟۔。]?$/iu.exec(text);
@@ -45,7 +45,7 @@ export function matchStorageRequest(request) {
   const isText = spec.type === "string";
   const name = nameMatch?.[1] ?? (isText ? "TextStore" : "NumberStore");
   const source = `// SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity ${compilerVersion};
 
 contract ${name} {
     ${spec.type} private storedValue;

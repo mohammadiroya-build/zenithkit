@@ -53,6 +53,8 @@ import {
   aL as Mt,
 } from "./index-BOd0iaB5.js";
 import { SoliditySourceInput } from "./solidity-source-input.js";
+import { abortReason, checkAbort, requestTimeout } from "./request-timeout.js";
+import { importRemappings, solidityImportResolver } from "./solidity-imports.js";
 import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { getCompilerBuild } from "./compiler-versions.js";
 import { deploymentFees, feePaid, formatZthFee } from "./contract-fees.js";
@@ -228,9 +230,8 @@ function rs(t, r, n, s, o, i = !1) {
   };
 }
 const ze = { evmVersion: "paris" },
-  ns = { "@openzeppelin/contracts": "openzeppelin-ide" },
   ye = (t) => !!t && typeof t == "object" && !Array.isArray(t),
-  Ge = (t) => Object.keys(ns).some((r) => t.startsWith(`${r}/`)),
+  owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key),
   as = {
     "*": { "*": ["abi", "metadata", "evm.bytecode", "evm.deployedBytecode"] },
   },
@@ -299,7 +300,6 @@ ${h.join(`
   }`);
 }
 async function ds(t, r, n, s, o, expectedBuild) {
-  var N;
   if (!t.trim() || Ke.encode(t).length > K.fileBytes)
     throw new Error("Enter Solidity source up to 500 KB");
   const i = t.trimStart().startsWith("{") ? JSON.parse(t) : null;
@@ -325,34 +325,34 @@ async function ds(t, r, n, s, o, expectedBuild) {
   let x = 0;
   for (const l of o) {
     const S = cs(l.path);
-    if (Object.hasOwn(a, S)) throw new Error(`Duplicate source path: ${S}`);
+    if (owns(a, S)) throw new Error(`Duplicate source path: ${S}`);
     const T = Ke.encode(l.content).length;
     if (((x += T), T > K.fileBytes || x > K.totalBytes))
       throw new Error("Imports are limited to 500 KB per file and 5 MB total");
     a[S] = { content: l.content };
   }
-  const m = Object.keys(a),
-    y = !m.some(
-      (l) => Ge(l) && (!Object.hasOwn(n, l) || a[l].content !== n[l]),
-    ),
-    u = is(a, i == null ? void 0 : i.settings);
-  for (let l = 0; l < 24; l++) {
+  const m = Object.keys(a);
+  const resolveImport = solidityImportResolver(a, n);
+  const settings = { ...i?.settings };
+  const remappings = importRemappings(settings.remappings, a, n);
+  if (remappings !== undefined) settings.remappings = remappings;
+  const u = is(a, settings);
+  for (;;) {
     const { output: S, compilerVersion: T } = await s(u);
     if (T !== expectedBuild)
       throw new Error(`Expected Solidity ${expectedBuild}`);
     let p = !1;
     for (const j of S.errors ?? []) {
       if (j.errorCode !== "6275") continue;
-      const z =
-        (N = /^Source "([^"]+)" not found:/.exec(j.message ?? "")) == null
-          ? void 0
-          : N[1];
-      y &&
-        z &&
-        Ge(z) &&
-        Object.hasOwn(n, z) &&
-        !Object.hasOwn(a, z) &&
-        ((a[z] = { content: n[z] }), (p = !0));
+      const z = /^Source "([^"]+)" not found:/.exec(j.message ?? "")?.[1];
+      if (!z || owns(a, z)) continue;
+      const source = resolveImport(z);
+      if (source) {
+        if (Object.keys(a).length >= K.files + 1 + Object.keys(n).length)
+          throw new Error("Too many resolved Solidity imports");
+        a[z] = source;
+        p = true;
+      }
     }
     if (p) continue;
     ss(S);
@@ -364,7 +364,6 @@ async function ds(t, r, n, s, o, expectedBuild) {
         .map((j) => j.formattedMessage),
     };
   }
-  throw new Error("The OpenZeppelin import tree is too deep");
 }
 const Ie = de([
     "function decimals() view returns (uint8)",
@@ -445,16 +444,18 @@ async function us(t, version) {
   if (globalThis.origin !== "null")
     return { worker: new Worker(le(`compiler/${r}`)), release: () => {} };
   const n = async (i) => {
-      const a = AbortSignal.timeout(25e3),
-        h = await fetch(le(`compiler/${i}`), {
-          signal: t ? AbortSignal.any([t, a]) : a,
-        });
-      if (!h.ok || !/javascript/.test(h.headers.get("content-type") ?? ""))
-        throw new Error("Could not load the bundled Solidity compiler");
-      return h.text();
+      const timeout = requestTimeout(25_000, t);
+      try {
+        const h = await fetch(le(`compiler/${i}`), { signal: timeout.signal });
+        if (!h.ok || !/javascript/.test(h.headers.get("content-type") ?? ""))
+          throw new Error("Could not load the bundled Solidity compiler");
+        return await h.text();
+      } finally {
+        timeout.clear();
+      }
     },
     s = await Promise.all([`soljson-${version}.js`, r].map(n));
-  t == null || t.throwIfAborted();
+  checkAbort(t);
   const o = URL.createObjectURL(
     new Blob(
       [
@@ -477,34 +478,42 @@ async function us(t, version) {
 }
 let Ye;
 function ms() {
-  return (
-    Ye ??
-    (Ye = fetch(le("compiler/openzeppelin-5.0.2.json"), {
-      signal: AbortSignal.timeout(25e3),
-    })
-      .then((t) => {
+  if (!Ye) {
+    Ye = (async () => {
+      const timeout = requestTimeout(25_000);
+      try {
+        const t = await fetch(le("compiler/openzeppelin-5.0.2.json"), {
+          signal: timeout.signal,
+        });
         if (!t.ok)
           throw new Error("Could not load the bundled OpenZeppelin sources");
-        return t.json();
-      })
-      .catch((t) => {
-        throw ((Ye = void 0), t);
-      }))
-  );
+        return await t.json();
+      } finally {
+        timeout.clear();
+      }
+    })().catch((error) => {
+      Ye = undefined;
+      throw error;
+    });
+  }
+  return Ye;
 }
 async function prepareAssistantCompiler(signal, version) {
-  const limit = AbortSignal.any([signal, AbortSignal.timeout(25_000)]);
-  limit.throwIfAborted();
-  const { worker, release } = await us(limit, version);
+  const timeout = requestTimeout(25_000, signal);
+  const limit = timeout.signal;
+  let worker;
+  let release;
   let closed = false;
   const close = () => {
     if (!closed) {
       closed = true;
-      worker.terminate();
-      release();
+      worker?.terminate();
+      release?.();
     }
   };
   try {
+    checkAbort(limit);
+    ({ worker, release } = await us(limit, version));
     await Promise.all([
       ms(),
       new Promise((resolve, reject) => {
@@ -513,7 +522,7 @@ async function prepareAssistantCompiler(signal, version) {
           worker.onmessage = worker.onerror = worker.onmessageerror = null;
           error ? reject(error) : resolve();
         }
-        const abort = () => finish(limit.reason);
+        const abort = () => finish(abortReason(limit));
         if (limit.aborted) {
           abort();
           return;
@@ -534,27 +543,29 @@ async function prepareAssistantCompiler(signal, version) {
         }
       }),
     ]);
-    limit.throwIfAborted();
+    checkAbort(limit);
     return { worker, close, version };
   } catch (error) {
     close();
     throw error;
+  } finally {
+    timeout.clear();
   }
 }
 async function ps(t, r, n, s, version, prepared) {
-  s == null || s.throwIfAborted();
+  checkAbort(s);
   const expectedBuild = getCompilerBuild(version);
   if (prepared && prepared.version !== version)
     throw new Error(`Expected a compiler prepared for Solidity ${version}`);
   const usesImports = n.length || t.trimStart().startsWith("{") || /\bimport\b/.test(t);
   const o = usesImports ? await ms() : {};
-  s == null || s.throwIfAborted();
+  checkAbort(s);
   const owned = prepared ? null : await us(s, version),
     i = prepared?.worker ?? owned.worker,
     h = Date.now() + 45e3,
     x = (m) =>
       new Promise((y, u) => {
-        s == null || s.throwIfAborted();
+        checkAbort(s);
         const N = h - Date.now();
         if (N <= 0) return u(new Error("Compilation timed out"));
         function l(p, g) {
@@ -562,7 +573,7 @@ async function ps(t, r, n, s, version, prepared) {
             s == null || s.removeEventListener("abort", S),
             p ? u(p) : y(g));
         }
-        const S = () => l(s.reason),
+        const S = () => l(abortReason(s)),
           T = setTimeout(() => l(new Error("Compilation timed out")), N);
         (s == null || s.addEventListener("abort", S, { once: !0 }),
           (i.onmessage = ({ data: p }) =>
@@ -1214,7 +1225,7 @@ function As() {
     ? t.filter(
         (r) =>
           Array.isArray(r == null ? void 0 : r.parts) &&
-          (r.kind === "Custom" || Object.hasOwn(F, r.kind)),
+          (r.kind === "Custom" || owns(F, r.kind)),
       )
     : [];
 }
