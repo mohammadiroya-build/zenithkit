@@ -45,3 +45,17 @@ export function compareRuntimeBytecode(onChain, contract) {
   }
   return { state: "Not matched", provider, message: "The compiled runtime does not match this address" };
 }
+
+export function savedVerificationRecord(records, address, contract, encoded) {
+  const target = address.toLowerCase();
+  let match;
+  for (const record of records) {
+    const part = record.parts.find(entry => entry.address?.toLowerCase() === target &&
+        entry.contract?.bytecode === contract.bytecode &&
+        entry.contract?.deployedBytecode === contract.deployedBytecode &&
+        entry.encoded === encoded);
+    if (part?.hash) return record;
+    if (part && !match) match = record;
+  }
+  return match;
+}

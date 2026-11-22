@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareRuntimeBytecode } from "../dist/assets/contract-bytecode.js";
+import { compareRuntimeBytecode, savedVerificationRecord } from "../dist/assets/contract-bytecode.js";
 import { deploymentFees, feePaid, formatZthFee } from "../dist/assets/contract-fees.js";
 import { matchStorageRequest } from "../dist/assets/request-storage.js";
 import { deploymentValue, initializerFor, readAssistantDeployment } from "../dist/assets/assistant-deployment-plan.js";
@@ -177,6 +177,18 @@ test("runtime comparison distinguishes on-chain match and mismatches", () => {
   assert.equal(matched.state, "Bytecode matched");
   assert.match(matched.message, /immutable values were not checked/);
   assert.equal(compareRuntimeBytecode("0x60005c4400", contract).state, "Not matched");
+});
+
+test("rechecking saved bytecode prefers the existing transaction regardless of address casing", () => {
+  const address = `0x${"aB".repeat(20)}`;
+  const contract = { bytecode: "0x60006000", deployedBytecode: "0x6000" };
+  const part = { address: address.toLowerCase(), contract, encoded: "0x01" };
+  const verifyOnly = { parts: [{ ...part, hash: null }] };
+  const deployed = { parts: [{ ...part, hash: "0x1234" }] };
+  assert.equal(savedVerificationRecord([verifyOnly, deployed], address, contract, "0x01"), deployed);
+  assert.equal(savedVerificationRecord([verifyOnly], address, contract, "0x01"), verifyOnly);
+  assert.equal(savedVerificationRecord([deployed], address, contract, "0x02"), undefined);
+  assert.equal(savedVerificationRecord([deployed], address, { ...contract, bytecode: "0x6001" }, "0x01"), undefined);
 });
 
 test("assistant requires a unique state-changing initializer and validates payable amounts", () => {

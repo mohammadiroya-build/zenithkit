@@ -58,7 +58,7 @@ import { importRemappings, solidityImportResolver } from "./solidity-imports.js"
 import { CompilerVersionField, ContractHelpButton } from "./compiler-controls.js";
 import { getCompilerBuild } from "./compiler-versions.js";
 import { deploymentFees, feePaid, formatZthFee } from "./contract-fees.js";
-import { compareRuntimeBytecode, metadataTail } from "./contract-bytecode.js";
+import { compareRuntimeBytecode, metadataTail, savedVerificationRecord } from "./contract-bytecode.js";
 /**
  * @license lucide-react v0.548.0 - ISC
  *
@@ -1341,9 +1341,10 @@ function zs({ record: t }) {
   function je(c) {
     (c === "assistant" && a(!0), o(c), q(null), pe(null), ge(!1));
   }
-  async function Be(c) {
+  async function Be(c, address) {
     let f = c;
     for (const C of f.parts) {
+      if (address && C.address.toLowerCase() !== address.toLowerCase()) continue;
       Q(`Checking bytecode for ${C.role}`);
       const E = await ws(C);
       ((f = {
@@ -1462,6 +1463,11 @@ function zs({ record: t }) {
             import.meta.url,
           ),
           fe = he((ie == null ? void 0 : ie.inputs) ?? [], V);
+        const saved = savedVerificationRecord(Me.current, ne, E, fe);
+        if (saved) {
+          await Be(saved, ne);
+          return;
+        }
         ((f = {
           ...De,
           address: ne,
