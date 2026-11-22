@@ -6,7 +6,26 @@ import { matchStorageRequest } from "../dist/assets/request-storage.js";
 import { deploymentValue, initializerFor, readAssistantDeployment } from "../dist/assets/assistant-deployment-plan.js";
 import { checkAbort, requestTimeout } from "../dist/assets/request-timeout.js";
 import { importRemappings, solidityImportResolver } from "../dist/assets/solidity-imports.js";
+import { formatWalletBalance } from "../dist/assets/wallet-balance.js";
 import worker from "../workers/contracts.mjs";
+
+test("wallet balance distinguishes zero from dust and retains exact wei", () => {
+  assert.deepEqual(formatWalletBalance(0n), { text: "0 ZTH", exact: "0 ZTH" });
+  assert.deepEqual(formatWalletBalance(1n), { text: "<0.00001 ZTH", exact: "0.000000000000000001 ZTH" });
+  assert.deepEqual(formatWalletBalance(9_999_999_999_999n), {
+    text: "<0.00001 ZTH", exact: "0.000009999999999999 ZTH",
+  });
+  assert.deepEqual(formatWalletBalance(10_000_000_000_000n), { text: "0.00001 ZTH", exact: "0.00001 ZTH" });
+});
+
+test("wallet balance groups and rounds without converting wei to a floating-point number", () => {
+  assert.deepEqual(formatWalletBalance(9_007_199_254_740_993_123_456_789_012_345_678n), {
+    text: "9,007,199,254,740,993.12346 ZTH", exact: "9,007,199,254,740,993.123456789012345678 ZTH",
+  });
+  assert.deepEqual(formatWalletBalance(999_999_999_999_999_999n), {
+    text: "1 ZTH", exact: "0.999999999999999999 ZTH",
+  });
+});
 
 const validSource = "// SPDX-License-Identifier: MIT\npragma solidity 0.8.28;\ncontract Demo {}\n";
 const path = "https://app.example/api/contracts/draft";
