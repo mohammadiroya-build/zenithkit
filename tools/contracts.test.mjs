@@ -121,6 +121,7 @@ test("the timeout preserves cancellation and can be cleared before it expires", 
 test("imports resolve pinned dependencies and uploads without substituting another version", () => {
   const pkg = "@openzeppelin/contracts";
   const sources = {
+    "Main.sol": { content: `import "${pkg}@5.0.2/utils/Math.sol";\nimport "node_modules/${pkg}/utils/Math.sol";` },
     "project/node_modules/vendor/Hash.sol": { content: "uploaded" },
     "workspace/lib/Shared.sol": { content: "local" },
   };
@@ -137,6 +138,7 @@ test("imports resolve pinned dependencies and uploads without substituting anoth
   assert.ok(rules.includes(explicit));
   assert.ok(!rules.includes(`${pkg}@5.0.2/=${pkg}/`));
   assert.ok(rules.includes(`node_modules/${pkg}/=${pkg}/`));
+  assert.equal(importRemappings(undefined, { "Main.sol": { content: "contract Main {}" } }, bundled), undefined);
 });
 
 test("gas limit and fee quote favor recent valid lower tips with full price cap", async () => {

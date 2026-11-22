@@ -33,6 +33,11 @@ export function importRemappings(existing, sources, bundled) {
   }
   const rules = existing ?? [];
   const prefixes = rules.map((entry) => entry.split("=", 1)[0].split(":").pop());
+  const sourceFiles = Object.values(sources);
+  const requested = packageAliases.filter(([alias]) =>
+    sourceFiles.some(({ content }) => content.includes(`"${alias}`) || content.includes(`'${alias}`))
+  );
+  if (!requested.length) return existing;
   const modified = modifiedPackages(sources, bundled);
   const pinnedOverrides = new Set();
   for (const [path, source] of Object.entries(sources)) {
@@ -42,7 +47,7 @@ export function importRemappings(existing, sources, bundled) {
       pinnedOverrides.add(packageOf(canonical));
     }
   }
-  const defaults = packageAliases
+  const defaults = requested
     .filter(([alias]) => !prefixes.some((prefix) => alias.startsWith(prefix) || prefix.startsWith(alias)))
     .filter(([alias, canonical]) => !alias.includes(`@${version}/`) ||
       (!modified.has(packageOf(canonical)) && !pinnedOverrides.has(packageOf(canonical))))
