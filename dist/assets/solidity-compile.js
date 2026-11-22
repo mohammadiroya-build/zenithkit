@@ -12,6 +12,15 @@ export function compilationSource(source, files, starter) {
   return files.length && source === starter ? "" : source;
 }
 
+export function normalizeSolidityIndentation(source) {
+  if (!/[\u00a0\u202f\u200e\u200f]/.test(source)) return source;
+  return source.replace(
+    /\/\/[^\r\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S]))|"(?:\\[\s\S]|[^"\\\r\n])*"?|'(?:\\[\s\S]|[^'\\\r\n])*'?|^[ \t\u00a0\u202f\u200e\u200f]+/gm,
+    token => /^[ \t\u00a0\u202f\u200e\u200f]+$/.test(token) ?
+      token.replace(/[\u00a0\u202f]/g, " ").replace(/[\u200e\u200f]/g, "") : token,
+  );
+}
+
 function uploadPath(path) {
   const name = path.trim().replace(/^(?:\.\/)+/, "");
   if (name.length > 512 || !name.endsWith(".sol") || /[\\:\u0000-\u001f\u007f]/.test(name) ||
@@ -73,9 +82,12 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
         typeof file.content !== "string") || (standard.settings !== undefined && !isObject(standard.settings)))) {
     throw new Error("Use Solidity Standard JSON with embedded source content");
   }
-  const sources = Object.assign(Object.create(null), standard?.sources ?? (hasEditor ? {
+  const sources = Object.create(null);
+  for (const [path, file] of Object.entries(standard?.sources ?? (hasEditor ? {
     [editorUnit]: { content: source },
-  } : {}));
+  } : {}))) {
+    sources[path] = owns(file, "keccak256") ? file : { ...file, content: normalizeSolidityIndentation(file.content) };
+  }
   const editorUnits = Object.keys(sources);
   if (editorUnits.length + uploads.length > sourceLimits.files + 1) {
     throw new Error("Use no more than 512 imported Solidity files");
@@ -89,7 +101,7 @@ export async function compileSolidity(source, requested, bundled, run, uploads, 
     if (size > sourceLimits.fileBytes || uploadedBytes > sourceLimits.totalBytes) {
       throw new Error("Imports are limited to 500 KB per file and 5 MB total");
     }
-    sources[path] = { content: file.content };
+    sources[path] = { content: normalizeSolidityIndentation(file.content) };
   }
   const suppliedUnits = Object.keys(sources);
   const candidates = (requested || !editorUnits.length) ? suppliedUnits : editorUnits;

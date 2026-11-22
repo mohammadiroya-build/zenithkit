@@ -3,13 +3,37 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
-import { compilationSource, compileSolidity } from "../dist/assets/solidity-compile.js";
+import { compilationSource, compileSolidity, normalizeSolidityIndentation } from "../dist/assets/solidity-compile.js";
 import { getCompilerBuild } from "../dist/assets/compiler-versions.js";
 import { fixedUsing, invalidType, invalidUsing, nft, solidity, upgradeable, uploadedProject } from "./compiler-fixtures.mjs";
 
 const require = createRequire(import.meta.url);
 const compilerRoot = new URL("../dist/compiler/", import.meta.url);
 const bundled = JSON.parse(readFileSync(new URL("openzeppelin-5.0.2.json", compilerRoot), "utf8"));
+const svgSource = solidity(`
+import "@openzeppelin/contracts@5.0.2/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts@5.0.2/utils/Base64.sol";
+import "@openzeppelin/contracts@5.0.2/utils/Strings.sol";
+contract SvgMedal is ERC721 {
+    using Strings for uint256;
+    constructor() ERC721("Medal", "MEDAL") {}
+    function issue() external { _safeMint(msg.sender, 1); }
+    function tokenURI(uint256 id) public pure override returns (string memory) {
+        return string.concat("data:image/svg+xml;base64,", Base64.encode(bytes(string.concat(
+            '<svg xmlns="http://www.w3.org/2000/svg"><circle r="8" stroke-opacity=".5"/>',
+            '<text>', id.toString(), '</text></svg>'
+        ))));
+    }
+}`);
+const copiedSvg = svgSource.replace(/^ +/gm, spaces => "\u200f" + "\u00a0".repeat(spaces.length));
+
+test("copy normalization leaves literals, their escapes, and comments untouched", () => {
+  const source = '/*\n\u200f\u00a0 a comment\n*/\n' +
+    '\u200f\u00a0string constant text = unicode"a\u00a0\\\"b\u200f"; //\u00a0 note\n' +
+    '\u200e\u202fstring constant escaped = "a\\\n\u00a0b";\n';
+  const expected = source.replace("\u200f\u00a0string", " string").replace("\u200e\u202fstring", " string");
+  assert.equal(normalizeSolidityIndentation(source), expected);
+});
 
 function workerFor(version) {
   let response;
@@ -50,6 +74,15 @@ for (const version of ["0.8.24", "0.8.28"]) {
       checkArtifact(pasted, "Custom", ["label"]);
       assert.equal(uploaded.bytecode, pasted.bytecode);
       assert.equal(uploaded.input.sources["Custom.sol"].content, fixedUsing);
+    });
+    await t.test("compiles the repaired on-chain SVG NFT with chat indentation and retains the compiled source", async () => {
+      const raw = run({ language: "Solidity", sources: { "Custom.sol": { content: copiedSvg } } });
+      assert.ok(raw.output.errors.some(error => error.type === "ParserError"));
+      const artifact = await compile(copiedSvg);
+      checkArtifact(artifact, "SvgMedal", ["issue", "tokenURI"]);
+      assert.equal(artifact.input.sources["Custom.sol"].content, svgSource);
+      const broken = copiedSvg.replace('stroke-opacity=".5"/>\',', "stroke-");
+      await assert.rejects(compile(broken), /ParserError:[\s\S]*stroke-/);
     });
     await t.test("compiles enumerable NFT, Merkle proof claims and role management", async () => {
       const withRemixImports = nft
