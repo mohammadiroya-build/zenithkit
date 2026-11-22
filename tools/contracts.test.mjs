@@ -7,7 +7,7 @@ import { deploymentValue, initializerFor, readAssistantDeployment } from "../dis
 import { checkAbort, requestTimeout } from "../dist/assets/request-timeout.js";
 import { importRemappings, solidityImportResolver } from "../dist/assets/solidity-imports.js";
 import { formatWalletBalance } from "../dist/assets/wallet-balance.js";
-import worker from "../workers/contracts.mjs";
+import worker, { encodeDraftLiterals } from "../workers/contracts.mjs";
 
 test("wallet balance distinguishes zero from dust and retains exact wei", () => {
   assert.deepEqual(formatWalletBalance(0n), { text: "0 ZTH", exact: "0 ZTH" });
@@ -51,6 +51,7 @@ test("worker forwards the unchanged original request in one model call", async (
     assert.match(input.messages[0].content, /No Markdown, prose, NatSpec or nonessential comments/);
     assert.match(input.messages[0].content, /do not omit requested features/);
     assert.match(input.messages[0].content, /Never use reserved Solidity words as identifiers/);
+    assert.match(input.messages[0].content, /write numeric syntax with ASCII digits/);
     assert.match(input.messages[0].content, /Use normal constructors by default/);
     assert.deepEqual(JSON.parse(input.messages[1].content), { request: original, language_hint: "es" });
     return { choices: [{ message: { content: `\`\`\`solidity\n${validSource}\`\`\`` }, finish_reason: "stop" }] };
@@ -117,12 +118,56 @@ test("worker routes, strips malformed completions, and enforces rate limits", as
   })).status, 429);
 });
 
+test("drafted bare Unicode literals keep their exact UTF-8 bytes while comments and import paths stay untouched", async () => {
+  const quoted = "سلام دنیا";
+  const source = `// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+import "./مرحبا.sol";
+contract Demo {
+    // "سلام"
+    string public constant message = "${quoted}\\n";
+    string public constant kept = unicode"日本語";
+    bytes public constant asciiBytes = hex"0102";
+    string public constant mixed = 'a😀';
+}
+`;
+  const bytes = Array.from(Buffer.from(quoted), value => value === 0x20 ? " " :
+    `\\x${value.toString(16).padStart(2, "0")}`).join("");
+  const encoded = source.replace(`"${quoted}\\n"`, `"${bytes}\\n"`).replace("😀", "\\xf0\\x9f\\x98\\x80");
+  assert.equal(encodeDraftLiterals(source), encoded);
+  assert.equal(encodeDraftLiterals(encoded), encoded);
+  const res = await worker.fetch(post({ prompt: "Keep the requested text" }), env(async () => ({ response: source })));
+  assert.deepEqual(await res.json(), { source: encoded });
+});
+
 test("quick storage does not drop extra requirements", () => {
   for (const version of ["0.8.28", "0.8.24"]) {
     const result = matchStorageRequest("Create a contract that stores a number", version);
     assert.equal(result.name, "NumberStore");
     assert.ok(result.source.includes(`pragma solidity ${version};`));
     assert.equal(matchStorageRequest("Create a contract that stores a number for owners only", version), null);
+  }
+});
+
+test("Persian storage requests use the matching local template without dropping constraints", () => {
+  for (const version of ["0.8.28", "0.8.24"]) {
+    const number = matchStorageRequest("یک قرارداد بساز که یک عدد ذخیره کند.", version);
+    assert.equal(number.name, "NumberStore");
+    assert.ok(number.source.includes(`pragma solidity ${version};`));
+    assert.match(number.source, /setValue\(uint256 newValue\)/);
+    const text = matchStorageRequest("یه قرارداد هوشمند بساز که یه متن رو ذخیره کنه. نام قرارداد: MessageBox", version);
+    assert.equal(text.name, "MessageBox");
+    assert.match(text.source, /setValue\(string calldata newValue\)/);
+    assert.equal(matchStorageRequest("یک قرارداد برای ذخیرهٔ یک عدد بنویس", version)?.name, "NumberStore");
+    assert.equal(matchStorageRequest("یک قرارداد برای ذخیره‌ی یک پیام بساز", version)?.name, "TextStore");
+    assert.equal(matchStorageRequest("يك قرارداد بساز كه يك پيام ذخيره كند", version)?.name, "TextStore");
+    for (const request of [
+      "یک قرارداد بساز که یک عدد ذخیره کند و فقط مالک آن را تغییر دهد",
+      "یک قرارداد بساز که عدد ۴۲ را ذخیره کند",
+      "یک قرارداد بساز که یک عدد ذخیره کند. مالک فقط بتواند آن را تغییر دهد. نام قرارداد: Ledger",
+      "یک قرارداد بساز که یک متن ذخیره کند؛ مقدار اولیه «سلام»",
+      "یک قرارداد بساز که یک عدد ذخیره نکند",
+    ]) assert.equal(matchStorageRequest(request, version), null, request);
   }
 });
 

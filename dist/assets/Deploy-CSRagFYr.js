@@ -339,35 +339,32 @@ async function prepareAssistantCompiler(signal, version) {
   try {
     checkAbort(limit);
     ({ worker, release } = await us(limit, version));
-    await Promise.all([
-      ms(),
-      new Promise((resolve, reject) => {
-        function finish(error) {
-          limit.removeEventListener("abort", abort);
-          worker.onmessage = worker.onerror = worker.onmessageerror = null;
-          error ? reject(error) : resolve();
-        }
-        const abort = () => finish(abortReason(limit));
-        if (limit.aborted) {
-          abort();
-          return;
-        }
-        limit.addEventListener("abort", abort, { once: true });
-        worker.onmessage = ({ data }) =>
-          finish(
-            data?.prepared
-              ? null
-              : new Error("Unexpected compiler preparation response"),
-          );
-        worker.onerror = worker.onmessageerror = () =>
-          finish(new Error("Could not prepare the browser compiler"));
-        try {
-          worker.postMessage({ prepare: true });
-        } catch (error) {
-          finish(error);
-        }
-      }),
-    ]);
+    await new Promise((resolve, reject) => {
+      function finish(error) {
+        limit.removeEventListener("abort", abort);
+        worker.onmessage = worker.onerror = worker.onmessageerror = null;
+        error ? reject(error) : resolve();
+      }
+      const abort = () => finish(abortReason(limit));
+      if (limit.aborted) {
+        abort();
+        return;
+      }
+      limit.addEventListener("abort", abort, { once: true });
+      worker.onmessage = ({ data }) =>
+        finish(
+          data?.prepared
+            ? null
+            : new Error("Unexpected compiler preparation response"),
+        );
+      worker.onerror = worker.onmessageerror = () =>
+        finish(new Error("Could not prepare the browser compiler"));
+      try {
+        worker.postMessage({ prepare: true });
+      } catch (error) {
+        finish(error);
+      }
+    });
     checkAbort(limit);
     return { worker, close, version };
   } catch (error) {
